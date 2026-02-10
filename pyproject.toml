@@ -1,0 +1,23 @@
+[project]
+name = "boxtime-indexer"
+version = "0.1.0"
+description = "Cointime Economics ETL/indexer for the Ergo blockchain"
+requires-python = ">= 3.12"
+dependencies = [
+    "aiohttp>=3.11,<4",
+    "asyncpg>=0.30,<1",
+]
+
+[tool.pixi.project]
+channels = ["conda-forge"]
+platforms = ["linux-64"]
+
+[tool.pixi.pypi-dependencies]
+boxtime-indexer = { path = ".", editable = true }
+
+[tool.pixi.tasks]
+start = "python -m src.main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
