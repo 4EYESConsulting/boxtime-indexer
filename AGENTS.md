@@ -3,19 +3,26 @@
 This file provides guidance to WARP (warp.dev) when working with code in this repository.
 
 ## Project Overview
-boxtime-indexer is the ETL/indexer companion to the [boxtime](https://github.com/4EYESConsulting/boxtime) library. It connects to Ergo blockchain nodes, computes Cointime Economics metrics (coinblocks created, destroyed, stored) for each block height, and persists the results to a SQLite database. The boxtime library then queries this database for instant lookups instead of making live HTTP calls to nodes.
+boxtime-indexer is the ETL/indexer companion to the [boxtime](https://github.com/4EYESConsulting/boxtime) library. It connects to a local Ergo blockchain node, computes Cointime Economics metrics (coinblocks created, destroyed, stored) for each block height, and persists the results to a PostgreSQL database.
 
 ## Architecture
-- **Indexer**: walks Ergo block heights, computes CBC/CBD/CBS per height using the boxtime library's async internals, and writes results to SQLite.
-- **Database**: SQLite file with one row per block height. Key columns: `height`, `timestamp`, `cbc`, `cbd`, `cbs`.
-- **Incremental sync**: on each run, the indexer picks up from `MAX(height)` in the DB and processes only new blocks.
-- **Backfill**: initial population covers ~1.7M+ heights. Uses concurrent fetching with multiple Ergo nodes for throughput.
+- **Ergo Node**: local node running in Docker with `extraIndex = true`. Requires v6.0.1+ for the `/blockchain/block/byHeaderId/{headerId}` endpoint.
+- **Indexer**: walks Ergo block heights, computes CBC/CBD/CBS per height via 3 HTTP calls to the local node, and writes results to PostgreSQL.
+- **Database**: PostgreSQL with one row per block height. Columns: `height`, `timestamp`, `cbc`, `cbd`, `cbs`. All values in nanoERGs (BIGINT).
+- **Incremental sync**: on each run, the indexer fills gaps, resumes from `MAX(height)`, and processes new blocks.
+- **Backfill**: initial population covers ~1.7M+ heights. Uses concurrent fetching bounded by a semaphore.
+- **Reorg handling**: poll loop verifies parent hash continuity and rolls back on chain reorganizations.
 
 ## Key Domain Concepts
-- **Coinblocks Created (CBC)**: total circulating supply at a block height (nanoERGs). Sourced from the node's `/emission/at/{height}` endpoint.
-- **Coinblocks Destroyed (CBD)**: `sum(input.value × (height - input.inclusion_height))` for all transaction inputs in a block.
+- **Coinblocks Created (CBC)**: total circulating supply at a block height (nanoERGs). Sourced from the node's `GET /emission/at/{height}` endpoint.
+- **Coinblocks Destroyed (CBD)**: `sum(input.value × (height - input.inclusion_height))` for all transaction inputs in a block. Sourced from `GET /blockchain/block/byHeaderId/{headerId}` which returns indexed transactions with full input data.
 - **Coinblocks Stored (CBS)**: `CBC - CBD`.
 - All values are in **nanoERGs** (1 ERG = 1,000,000,000 nanoERG).
 
 ## Ergo Node Requirements
-Nodes must have `ergo.node.extraIndex = true` enabled. The REST API typically runs on port 9053 (not the P2P port 9030). Known public indexed nodes include the eutxo.de cluster (e.g. `https://ergo-node-1.eutxo.de`).
+Node must be v6.0.1+ with `ergo.node.extraIndex = true` enabled. The REST API runs on port 9053. The docker-compose setup includes a local node by default.
+
+## Workflow Rules
+1. Each part of the plan must have a corresponding issue in the GitHub repository.
+2. Each issue must be worked on in a separate branch with name starting with `ldgaetano/`.
+3. Create commits accordingly and then a PR for each issue.
