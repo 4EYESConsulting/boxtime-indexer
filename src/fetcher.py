@@ -127,6 +127,14 @@ async def fetch_height_with_retry(
         return None
 
 
+# fetch_chunk is the primary batch fetching primitive used throughout the indexer.
+# It fetches a list of heights concurrently (bounded by max_concurrent), with
+# automatic retries and exponential backoff for each height.
+#
+# Used by:
+# - gap_fill: to fill missing heights detected on startup
+# - backfill: to process chunks during initial sync from resume point to chain tip
+# - poll_loop: to index new blocks discovered during continuous polling
 async def fetch_chunk(
     session: aiohttp.ClientSession,
     node_url: str,
