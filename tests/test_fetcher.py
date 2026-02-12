@@ -8,6 +8,7 @@ from aioresponses import aioresponses
 
 from src.fetcher import (
     HeightData,
+    _EMISSION_ERGO_TREE,
     _get_json,
     fetch_chunk,
     fetch_height,
@@ -69,6 +70,29 @@ _BLOCK_BT_SCHEMA = {
     },
 }
 
+# Mock block with flat transactions schema (v6.0.2) and an emission box input
+_BLOCK_FLAT_SCHEMA = {
+    "header": {"timestamp": 1561978800000},
+    "transactions": [
+        {
+            "inputs": [
+                # Emission contract box — should be excluded from CBD
+                {
+                    "value": 93409132500000000,
+                    "inclusionHeight": 9,
+                    "ergoTree": _EMISSION_ERGO_TREE,
+                },
+                {"value": 1000, "inclusionHeight": 5},
+            ]
+        },
+        {
+            "inputs": [
+                {"value": 2000, "inclusionHeight": 8},
+            ]
+        },
+    ],
+}
+
 
 def _mock_fetch_height_endpoints(m, height=10, block=None):
     """Register the 3 endpoints used by fetch_height."""
@@ -97,6 +121,54 @@ async def test_fetch_height_blockTransactions_schema():
     # CBD = 1000*(10-5) + 2000*(10-8) = 5000 + 4000 = 9000
     assert hd.cbd == 9000
     assert hd.cbs == 75000000000 - 9000
+
+
+@pytest.mark.asyncio
+async def test_fetch_height_flat_transactions_schema():
+    """fetch_height works with the flat transactions schema (v6.0.2) and
+    excludes the emission contract box from CBD."""
+    with aioresponses() as m:
+        _mock_fetch_height_endpoints(m, height=10, block=_BLOCK_FLAT_SCHEMA)
+        async with aiohttp.ClientSession() as session:
+            hd = await fetch_height(session, NODE, 10)
+
+    assert hd.height == 10
+    assert hd.cbc == 75000000000
+    assert hd.timestamp == 1561978800000
+    # Emission box (value=93409132500000000, inclusionHeight=9) is excluded.
+    # CBD = 1000*(10-5) + 2000*(10-8) = 5000 + 4000 = 9000
+    assert hd.cbd == 9000
+    assert hd.cbs == 75000000000 - 9000
+
+
+@pytest.mark.asyncio
+async def test_fetch_height_emission_box_excluded():
+    """Emission contract box input is excluded from CBD even when it is the
+    only input in a transaction."""
+    block = {
+        "header": {"timestamp": 2000},
+        "blockTransactions": {
+            "transactions": [
+                {
+                    "inputs": [
+                        {
+                            "value": 50000000000000000,
+                            "inclusionHeight": 1,
+                            "ergoTree": _EMISSION_ERGO_TREE,
+                        },
+                    ]
+                }
+            ]
+        },
+    }
+    with aioresponses() as m:
+        _mock_fetch_height_endpoints(m, height=5, block=block)
+        async with aiohttp.ClientSession() as session:
+            hd = await fetch_height(session, NODE, 5)
+
+    # The only input is the emission box — CBD should be 0
+    assert hd.cbd == 0
+    assert hd.cbs == hd.cbc
 
 
 @pytest.mark.asyncio

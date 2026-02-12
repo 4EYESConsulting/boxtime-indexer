@@ -12,6 +12,20 @@ logger = logging.getLogger(__name__)
 MAX_RETRIES = 3
 BACKOFF_BASE = 1.0  # seconds
 
+# Ergo mainnet emission contract ergoTree. This box holds the unissued supply
+# and is consumed/recreated in every block's coinbase transaction. It must be
+# excluded from CBD computation because it is not part of the circulating supply.
+# When emissions eventually run out the box will no longer appear as an input
+# and this filter will simply match nothing.
+_EMISSION_ERGO_TREE = (
+    "101004020e36100204a00b08cd0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2"
+    "815b16f81798ea02d192a39a8cc7a7017300730110010204020404040004c0fd4f05808c82f5f603"
+    "0580b8c9e5ae040580f882ad16040204c0944004c0f407040004000580f882ad16d19683030191a3"
+    "8cc7a7019683020193c2b2a57300007473017302830108cdeeac93a38cc7b2a573030001978302019"
+    "683040193b1a5730493c2a7c2b2a573050093958fa3730673079973089c73097e9a730a9d99a3730b"
+    "730c0599c1a7c1b2a5730d00938cc7b2a5730e0001a390c1a7730f"
+)
+
 
 @dataclass
 class HeightData:
@@ -77,11 +91,14 @@ async def fetch_height(
     # Extract timestamp from block header
     timestamp: int = block["header"]["timestamp"]
 
-    # Compute CBD from indexed transaction inputs
+    # Compute CBD from indexed transaction inputs, excluding the emission
+    # contract box which carries the unissued supply and is not circulating.
     cbd = 0
     txs = block.get("blockTransactions", {}).get("transactions") or block.get("transactions", [])
     for tx in txs:
         for inp in tx["inputs"]:
+            if inp.get("ergoTree") == _EMISSION_ERGO_TREE:
+                continue
             inclusion_height = inp.get("inclusionHeight")
             if inclusion_height is None:
                 continue

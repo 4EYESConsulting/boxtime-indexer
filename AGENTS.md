@@ -15,7 +15,7 @@ boxtime-indexer is the ETL/indexer companion to the [boxtime](https://github.com
 
 ## Key Domain Concepts
 - **Coinblocks Created (CBC)**: total circulating supply at a block height (nanoERGs). Sourced from the node's `GET /emission/at/{height}` endpoint.
-- **Coinblocks Destroyed (CBD)**: `sum(input.value × (height - input.inclusion_height))` for all transaction inputs in a block. Sourced from `GET /blockchain/block/byHeaderId/{headerId}` which returns indexed transactions with full input data.
+- **Coinblocks Destroyed (CBD)**: `sum(input.value × (height - input.inclusion_height))` for all transaction inputs in a block, **excluding the emission contract box** (identified by its constant ergoTree). The emission box carries the unissued supply and is consumed/recreated each block; including it would massively inflate CBD. Sourced from `GET /blockchain/block/byHeaderId/{headerId}` which returns indexed transactions with full input data.
 - **Coinblocks Stored (CBS)**: `CBC - CBD`.
 - All values are in **nanoERGs** (1 ERG = 1,000,000,000 nanoERG).
 
