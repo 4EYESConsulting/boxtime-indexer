@@ -12,18 +12,25 @@ cd boxtime-indexer
 cp .env.example .env
 ```
 
-**With the bundled Ergo node** (syncs the chain locally — takes time on first run):
+**Fully local** (local DB + bundled Ergo node — syncs the chain locally, takes time on first run):
 
 ```bash
-docker compose --profile local-node up -d
+task up
 ```
 
-**With your own Ergo node** (must be v6.0.1+ with `extraIndex = true`):
+**With your own Ergo node** (local DB + remote node, must be v6.0.1+ with `extraIndex = true`):
 
 ```bash
 # Edit .env and set NODE_URL to your node
-# NODE_URL=https://your-ergo-node:9053
-docker compose up -d
+task up:remote-node
+```
+
+**With a remote database** (e.g. Supabase — see [Remote Database](#remote-database) below):
+
+```bash
+# Edit .env and set DATABASE_URL to your remote Postgres
+task up:remote        # remote DB + remote node
+task up:remote-db     # remote DB + local node
 ```
 
 Once the node is synced, the indexer automatically backfills all historical blocks and then polls for new ones.
@@ -59,10 +66,30 @@ All settings are environment variables with sensible defaults for the docker-com
 Docker services:
 
 - **node** *(optional, `local-node` profile)* — Ergo full node (`ergoplatform/ergo`) with `extraIndex = true`. Only needed if you don't have your own node.
-- **db** — PostgreSQL 17, stores one row per block height.
+- **db** *(optional, `local-db` profile)* — PostgreSQL 17, stores one row per block height. Not needed when using a remote database.
 - **indexer** — Python async service that fetches data from the node and writes to the database.
 
 The Ergo node (local or external) must be v6.0.1+ with `extraIndex = true` for the indexed block API.
+
+### Remote Database
+
+The indexer can write to any PostgreSQL database — local or remote. To use a hosted database (e.g. Supabase, Neon, or any managed Postgres):
+
+1. Set `DATABASE_URL` in `.env` to your remote connection string.
+2. Use the **connection pooler** endpoint when available (e.g. Supabase port `6543` in transaction mode) — this handles many concurrent clients efficiently.
+3. SSL is enabled automatically for remote hosts.
+
+Example with Supabase:
+
+```bash
+# .env
+DATABASE_URL=postgresql://postgres.[ref]:[password]@aws-0-[region].pooler.supabase.com:6543/postgres
+NODE_URL=https://your-ergo-node:9053
+```
+
+```bash
+task up:remote
+```
 
 ### Database schema
 
@@ -125,8 +152,10 @@ Requires [pixi](https://pixi.sh) and (optionally) [Task](https://taskfile.dev). 
 
 | Task | Description |
 |---|---|
-| `task up` | Start the indexer with an external Ergo node |
-| `task up:local-node` | Start the indexer with the bundled local node |
+| `task up` | Start with local DB and local node (default) |
+| `task up:remote-node` | Start with local DB and remote node |
+| `task up:remote-db` | Start with remote DB and local node |
+| `task up:remote` | Start with remote DB and remote node |
 | `task down` | Stop all containers |
 | `task clean` | Remove all containers, images, and volumes |
 | `task status` | Print indexing status from the database |
