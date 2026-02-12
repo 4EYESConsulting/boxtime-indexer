@@ -129,6 +129,7 @@ Requires [pixi](https://pixi.sh) and (optionally) [Task](https://taskfile.dev). 
 | `task up:local-node` | Start the indexer with the bundled local node |
 | `task down` | Stop all containers |
 | `task clean` | Remove all containers, images, and volumes |
+| `task status` | Print indexing status from the database |
 | `task install` | Install Python dependencies with pixi |
 | `task test` | Run the test suite |
 | `task snapshot:produce HEIGHT=<h>` | Produce a DB snapshot at the given height |

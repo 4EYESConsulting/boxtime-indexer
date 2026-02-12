@@ -25,6 +25,11 @@ tasks:
     cmds:
       - docker compose --profile local-node down -v --rmi all
 
+  status:
+    desc: Print indexing status from the database
+    cmds:
+      - ./scripts/status.sh
+
   # ---------------------------------------------------------------------------
   # Snapshots
   # ---------------------------------------------------------------------------
