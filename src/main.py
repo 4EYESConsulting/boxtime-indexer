@@ -18,7 +18,7 @@ _GENESIS_TIMESTAMP = 1561978800000
 
 
 async def _wait_for_node(session: aiohttp.ClientSession, node_url: str) -> None:
-    """Block until the Ergo node is synced and its extra index is ready."""
+    """Block until the Ergo node is reachable and has an active extra index."""
     logger.info("Waiting for node at %s to be ready...", node_url)
     while True:
         try:
@@ -27,23 +27,16 @@ async def _wait_for_node(session: aiohttp.ClientSession, node_url: str) -> None:
                 indexed = await _get_json(
                     session, f"{node_url}/blockchain/indexedHeight"
                 )
-                if indexed:
-                    indexed_height = indexed.get("indexedHeight") or indexed.get(
-                        "fullHeight"
-                    )
+                if indexed and indexed.get("indexedHeight"):
+                    indexed_height = indexed["indexedHeight"]
                     full_height = info["fullHeight"]
-                    if indexed_height and indexed_height >= full_height - 1:
-                        logger.info(
-                            "Node ready: fullHeight=%d, indexedHeight=%d",
-                            full_height,
-                            indexed_height,
-                        )
-                        return
                     logger.info(
-                        "Node syncing: indexedHeight=%s, fullHeight=%d",
-                        indexed_height,
+                        "Node ready: fullHeight=%d, indexedHeight=%d",
                         full_height,
+                        indexed_height,
                     )
+                    return
+                logger.info("Node reachable but extra index not yet available")
         except Exception:
             logger.debug("Node not reachable yet")
         await asyncio.sleep(10)

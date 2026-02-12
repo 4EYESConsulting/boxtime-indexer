@@ -20,11 +20,15 @@ logger = logging.getLogger(__name__)
 
 
 async def _get_chain_height(session: aiohttp.ClientSession, node_url: str) -> int:
-    """Fetch the current chain height from the node."""
-    info = await _get_json(session, f"{node_url}/info")
-    if info is None:
-        raise RuntimeError("Failed to fetch node info")
-    return info["fullHeight"]
+    """Fetch the current indexed height from the node.
+
+    Uses indexedHeight (not fullHeight) because heights above the extra
+    index frontier don't have data available via /blockchain/block/byHeaderId.
+    """
+    indexed = await _get_json(session, f"{node_url}/blockchain/indexedHeight")
+    if indexed is None or indexed.get("indexedHeight") is None:
+        raise RuntimeError("Failed to fetch indexed height from node")
+    return indexed["indexedHeight"]
 
 
 async def _get_block_header(
