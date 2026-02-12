@@ -10,10 +10,23 @@ Companion to the [boxtime](https://github.com/4EYESConsulting/boxtime) library.
 git clone https://github.com/4EYESConsulting/boxtime-indexer.git
 cd boxtime-indexer
 cp .env.example .env
+```
+
+**With the bundled Ergo node** (syncs the chain locally — takes time on first run):
+
+```bash
+docker compose --profile local-node up -d
+```
+
+**With your own Ergo node** (must be v6.0.1+ with `extraIndex = true`):
+
+```bash
+# Edit .env and set NODE_URL to your node
+# NODE_URL=https://your-ergo-node:9053
 docker compose up -d
 ```
 
-The Ergo node will sync the blockchain first (this takes time on first run). Once synced, the indexer automatically backfills all historical blocks and then polls for new ones.
+Once the node is synced, the indexer automatically backfills all historical blocks and then polls for new ones.
 
 ## Restoring from a snapshot
 
@@ -43,11 +56,13 @@ All settings are environment variables with sensible defaults for the docker-com
 
 ## Architecture
 
-Three Docker services:
+Docker services:
 
-- **node** — Ergo full node (`ergoplatform/ergo`) with `extraIndex = true` (required for the indexed block API). Must be v6.0.1+.
+- **node** *(optional, `local-node` profile)* — Ergo full node (`ergoplatform/ergo`) with `extraIndex = true`. Only needed if you don't have your own node.
 - **db** — PostgreSQL 17, stores one row per block height.
 - **indexer** — Python async service that fetches data from the node and writes to the database.
+
+The Ergo node (local or external) must be v6.0.1+ with `extraIndex = true` for the indexed block API.
 
 ### Database schema
 
