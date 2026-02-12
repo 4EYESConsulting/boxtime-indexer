@@ -13,7 +13,7 @@ tasks:
   up:local-node:
     desc: Start the indexer with the bundled local Ergo node
     cmds:
-      - docker compose --profile local-node up -d --build
+      - docker compose --profile local-node up -d
 
   down:
     desc: Stop all containers
