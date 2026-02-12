@@ -8,7 +8,7 @@ tasks:
   up:
     desc: Start the indexer with an external Ergo node (set NODE_URL in .env)
     cmds:
-      - docker compose up -d --build
+      - docker compose up -d
 
   up:local-node:
     desc: Start the indexer with the bundled local Ergo node
