@@ -2,6 +2,8 @@
 
 import asyncio
 import logging
+import ssl
+from urllib.parse import urlparse
 from typing import List, Optional, Sequence, Tuple
 
 import asyncpg
@@ -10,6 +12,8 @@ logger = logging.getLogger(__name__)
 
 _DB_CONNECT_RETRIES = 30
 _DB_CONNECT_INTERVAL = 2  # seconds
+
+_LOCAL_HOSTS = frozenset({"localhost", "127.0.0.1", "::1", "db"})
 
 _CREATE_TABLE = """
 CREATE TABLE IF NOT EXISTS cointime (
@@ -35,14 +39,29 @@ ON CONFLICT (height) DO UPDATE SET
 Row = Tuple[int, int, int, int, int]
 
 
+def _needs_ssl(database_url: str) -> bool:
+    """Return True if the database URL points to a remote host."""
+    parsed = urlparse(database_url)
+    hostname = (parsed.hostname or "").lower()
+    return hostname not in _LOCAL_HOSTS
+
+
 async def init_db(database_url: str) -> asyncpg.Pool:
     """Create a connection pool and ensure the cointime table exists.
 
     Retries the connection to tolerate a database that is still starting up.
+    Enables SSL automatically for remote hosts (required by providers
+    like Supabase, Neon, etc.).
     """
+    kwargs = {}
+    if _needs_ssl(database_url):
+        ssl_ctx = ssl.create_default_context()
+        kwargs["ssl"] = ssl_ctx
+        logger.info("SSL enabled for remote database connection")
+
     for attempt in range(1, _DB_CONNECT_RETRIES + 1):
         try:
-            pool = await asyncpg.create_pool(database_url)
+            pool = await asyncpg.create_pool(database_url, **kwargs)
             async with pool.acquire() as conn:
                 await conn.execute(_CREATE_TABLE)
             logger.info("Database initialized")
