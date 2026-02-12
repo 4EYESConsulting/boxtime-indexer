@@ -23,9 +23,10 @@ boxtime-indexer is the ETL/indexer companion to the [boxtime](https://github.com
 Node must be v6.0.1+ with `ergo.node.extraIndex = true` enabled. The REST API runs on port 9053. The docker-compose setup includes a local node by default.
 
 ## Workflow Rules
-1. Each part of the plan must have a corresponding issue in the GitHub repository.
-2. Each issue must be worked on in a separate branch with name starting with `boxtime/`.
-3. Create commits accordingly and then a PR for each issue.
+1. Every task must follow the pattern: **branch** → **commits** → **PR**. Create a `boxtime/` branch, commit your work, and open a pull request.
+2. Each part of a plan must have a corresponding issue in the GitHub repository.
+3. Each issue must be worked on in a separate branch with name starting with `boxtime/`.
+4. Create commits accordingly and then a PR for each issue.
 
 ## Plan Execution Standard
 When executing a plan, follow this workflow:
