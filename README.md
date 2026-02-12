@@ -60,6 +60,8 @@ All settings are environment variables with sensible defaults for the docker-com
 | `MAX_CONCURRENT` | `50` | Maximum concurrent requests to the node |
 | `POLL_INTERVAL` | `60` | Seconds between chain-tip checks after backfill |
 | `START_HEIGHT` | `1` | Height to start from if DB is empty |
+| `COINGECKO_API_KEY` | *(none)* | CoinGecko API key for daily ERG/USD prices (optional) |
+| `COINGECKO_PRO` | `false` | Set to `true` for paid CoinGecko plans |
 
 ## Architecture
 
@@ -101,9 +103,14 @@ CREATE TABLE cointime (
     cbd       NUMERIC NOT NULL,
     cbs       NUMERIC NOT NULL
 );
+
+CREATE TABLE erg_prices (
+    date      DATE PRIMARY KEY,
+    price_usd DOUBLE PRECISION NOT NULL
+);
 ```
 
-All cointime values are in **nanoERGs** (1 ERG = 1,000,000,000 nanoERG).
+All cointime values are in **nanoERGs** (1 ERG = 1,000,000,000 nanoERG). The `erg_prices` table stores one row per day (daily close from CoinGecko) and is only populated when a CoinGecko API key is configured.
 
 ### How it works
 
@@ -123,7 +130,8 @@ CBS = CBC − CBD.
 2. Insert genesis row (height 0)
 3. Fill any gaps from previous incomplete runs
 4. Backfill from resume point to chain tip (chunked, concurrent)
-5. Enter poll loop — checks for new blocks every `POLL_INTERVAL` seconds
+5. Backfill daily ERG/USD prices from CoinGecko (if API key is configured)
+6. Enter poll loop — checks for new blocks and syncs latest prices every `POLL_INTERVAL` seconds
 
 **Reorg handling:** Before indexing a new block, the poll loop verifies parent hash continuity. On mismatch, it walks back to the fork point, deletes stale rows, and re-indexes.
 

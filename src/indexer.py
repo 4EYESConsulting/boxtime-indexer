@@ -15,6 +15,7 @@ from src.db import (
     upsert_batch,
 )
 from src.fetcher import fetch_chunk, _get_json
+from src.price_fetcher import sync_latest_prices
 
 logger = logging.getLogger(__name__)
 
@@ -169,6 +170,13 @@ async def poll_loop(
                 logger.info("Rolling back to fork point at height %d", fork_height)
                 await delete_from_height(pool, fork_height)
                 continue  # Re-enter loop to re-process from fork point
+
+            # Sync latest price data
+            if config.coingecko_api_key:
+                try:
+                    await sync_latest_prices(pool, config)
+                except Exception:
+                    logger.exception("Error syncing price data")
 
             # Index new blocks in chunks
             heights = list(range(next_height, chain_height + 1))
