@@ -14,12 +14,19 @@ platforms = ["linux-64"]
 
 [tool.pixi.pypi-dependencies]
 boxtime-indexer = { path = ".", editable = true }
+pytest = ">=8,<9"
+pytest-asyncio = ">=0.24,<1"
+aioresponses = ">=0.7,<1"
 
 [tool.pixi.tasks]
 start = "python -m src.main"
+test = "pytest tests/ -v"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
 
 [build-system]
 requires = ["hatchling"]
