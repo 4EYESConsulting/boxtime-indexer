@@ -17,6 +17,8 @@ def _make_config(**overrides) -> Config:
     defaults = dict(
         node_url=NODE,
         database_url="postgresql://x",
+        coingecko_api_key=None,
+        coingecko_pro=False,
         chunk_size=100,
         max_concurrent=5,
         poll_interval=10,
