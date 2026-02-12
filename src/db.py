@@ -11,9 +11,9 @@ _CREATE_TABLE = """
 CREATE TABLE IF NOT EXISTS cointime (
     height    INTEGER PRIMARY KEY,
     timestamp BIGINT NOT NULL,
-    cbc       BIGINT NOT NULL,
-    cbd       BIGINT NOT NULL,
-    cbs       BIGINT NOT NULL
+    cbc       NUMERIC NOT NULL,
+    cbd       NUMERIC NOT NULL,
+    cbs       NUMERIC NOT NULL
 );
 """
 

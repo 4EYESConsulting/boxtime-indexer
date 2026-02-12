@@ -70,9 +70,9 @@ The Ergo node (local or external) must be v6.0.1+ with `extraIndex = true` for t
 CREATE TABLE cointime (
     height    INTEGER PRIMARY KEY,
     timestamp BIGINT NOT NULL,
-    cbc       BIGINT NOT NULL,
-    cbd       BIGINT NOT NULL,
-    cbs       BIGINT NOT NULL
+    cbc       NUMERIC NOT NULL,
+    cbd       NUMERIC NOT NULL,
+    cbs       NUMERIC NOT NULL
 );
 ```
 
