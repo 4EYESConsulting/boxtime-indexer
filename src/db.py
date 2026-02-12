@@ -64,6 +64,11 @@ async def init_db(database_url: str) -> asyncpg.Pool:
     kwargs = {}
     if _needs_ssl(database_url):
         ssl_ctx = ssl.create_default_context()
+        # Equivalent to sslmode=require: encrypted but no cert verification.
+        # Required for providers like Supabase whose connection pooler
+        # uses certificates that don't pass strict CA validation.
+        ssl_ctx.check_hostname = False
+        ssl_ctx.verify_mode = ssl.CERT_NONE
         kwargs["ssl"] = ssl_ctx
         logger.info("SSL enabled for remote database connection")
 
