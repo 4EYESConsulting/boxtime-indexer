@@ -15,6 +15,8 @@ def test_load_config_defaults():
         not in {
             "NODE_URL",
             "DATABASE_URL",
+            "COINGECKO_API_KEY",
+            "COINGECKO_PRO",
             "CHUNK_SIZE",
             "MAX_CONCURRENT",
             "POLL_INTERVAL",
@@ -26,6 +28,8 @@ def test_load_config_defaults():
 
     assert cfg.node_url == "http://node:9053"
     assert cfg.database_url == "postgresql://boxtime:boxtime@db:5432/boxtime"
+    assert cfg.coingecko_api_key is None
+    assert cfg.coingecko_pro is False
     assert cfg.chunk_size == 5000
     assert cfg.max_concurrent == 50
     assert cfg.poll_interval == 60
@@ -37,6 +41,8 @@ def test_load_config_from_env():
     env = {
         "NODE_URL": "http://mynode:9053",
         "DATABASE_URL": "postgresql://u:p@host/db",
+        "COINGECKO_API_KEY": "my-cg-key",
+        "COINGECKO_PRO": "true",
         "CHUNK_SIZE": "100",
         "MAX_CONCURRENT": "10",
         "POLL_INTERVAL": "30",
@@ -47,6 +53,8 @@ def test_load_config_from_env():
 
     assert cfg.node_url == "http://mynode:9053"
     assert cfg.database_url == "postgresql://u:p@host/db"
+    assert cfg.coingecko_api_key == "my-cg-key"
+    assert cfg.coingecko_pro is True
     assert cfg.chunk_size == 100
     assert cfg.max_concurrent == 10
     assert cfg.poll_interval == 30
@@ -58,6 +66,8 @@ def test_config_is_frozen():
     cfg = Config(
         node_url="http://x",
         database_url="postgresql://x",
+        coingecko_api_key=None,
+        coingecko_pro=False,
         chunk_size=1,
         max_concurrent=1,
         poll_interval=1,
