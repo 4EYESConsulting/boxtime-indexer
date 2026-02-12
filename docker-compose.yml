@@ -18,6 +18,8 @@ services:
   db:
     image: postgres:17-alpine
     profiles: [local-db]
+    ports:
+      - "5432:5432"
     environment:
       POSTGRES_USER: boxtime
       POSTGRES_PASSWORD: boxtime
