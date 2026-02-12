@@ -79,7 +79,8 @@ async def fetch_height(
 
     # Compute CBD from indexed transaction inputs
     cbd = 0
-    for tx in block["blockTransactions"]["transactions"]:
+    txs = block.get("blockTransactions", {}).get("transactions") or block.get("transactions", [])
+    for tx in txs:
         for inp in tx["inputs"]:
             inclusion_height = inp.get("inclusionHeight")
             if inclusion_height is None:
