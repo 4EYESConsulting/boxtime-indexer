@@ -26,6 +26,24 @@ tasks:
       - docker compose --profile local-node down -v --rmi all
 
   # ---------------------------------------------------------------------------
+  # Snapshots
+  # ---------------------------------------------------------------------------
+
+  snapshot:produce:
+    desc: Produce a database snapshot at the given height
+    cmds:
+      - ./scripts/snapshot.sh produce {{.HEIGHT}}
+    requires:
+      vars: [HEIGHT]
+
+  snapshot:restore:
+    desc: Restore a database snapshot from a tarball
+    cmds:
+      - ./scripts/snapshot.sh restore {{.TARBALL}}
+    requires:
+      vars: [TARBALL]
+
+  # ---------------------------------------------------------------------------
   # Development
   # ---------------------------------------------------------------------------
 

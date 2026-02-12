@@ -24,5 +24,5 @@ Node must be v6.0.1+ with `ergo.node.extraIndex = true` enabled. The REST API ru
 
 ## Workflow Rules
 1. Each part of the plan must have a corresponding issue in the GitHub repository.
-2. Each issue must be worked on in a separate branch with name starting with `ldgaetano/`.
+2. Each issue must be worked on in a separate branch with name starting with `boxtime/`.
 3. Create commits accordingly and then a PR for each issue.

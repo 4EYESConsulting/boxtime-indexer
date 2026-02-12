@@ -35,8 +35,8 @@ To skip the full backfill (~1.7M+ blocks), download a pre-built database snapsho
 ```bash
 # Download the latest snapshot from GitHub Releases
 # Then restore it:
-./scripts/snapshot.sh restore boxtime-pgdata-<height>.tar.gz
-docker compose up -d
+task snapshot:restore TARBALL=boxtime-pgdata-<height>.tar.gz
+task up
 ```
 
 The indexer resumes from `MAX(height)` automatically.
@@ -107,7 +107,14 @@ CBS = CBC − CBD.
 Produce a snapshot after backfill completes:
 
 ```bash
-./scripts/snapshot.sh produce <height>
+task snapshot:produce HEIGHT=1700000
+```
+
+Restore a previously produced snapshot:
+
+```bash
+task snapshot:restore TARBALL=boxtime-pgdata-1700000.tar.gz
+task up
 ```
 
 This stops containers, tars the PostgreSQL data volume, and outputs a `boxtime-pgdata-<height>.tar.gz` file ready to upload as a GitHub Release.
@@ -124,15 +131,8 @@ Requires [pixi](https://pixi.sh) and (optionally) [Task](https://taskfile.dev). 
 | `task clean` | Remove all containers, images, and volumes |
 | `task install` | Install Python dependencies with pixi |
 | `task test` | Run the test suite |
-
-To run locally (outside Docker):
-
-```bash
-task install
-pixi run start
-```
-
-You'll need a running Ergo node and PostgreSQL instance. Set `NODE_URL` and `DATABASE_URL` in `.env` accordingly.
+| `task snapshot:produce HEIGHT=<h>` | Produce a DB snapshot at the given height |
+| `task snapshot:restore TARBALL=<file>` | Restore a DB snapshot from a tarball |
 
 ## License
 
