@@ -17,6 +17,7 @@ services:
 
   db:
     image: postgres:17-alpine
+    profiles: [local-db]
     environment:
       POSTGRES_USER: boxtime
       POSTGRES_PASSWORD: boxtime
@@ -32,9 +33,6 @@ services:
 
   indexer:
     build: .
-    depends_on:
-      db:
-        condition: service_healthy
     env_file: .env
     restart: unless-stopped
 

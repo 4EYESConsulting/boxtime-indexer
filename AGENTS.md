@@ -26,3 +26,10 @@ Node must be v6.0.1+ with `ergo.node.extraIndex = true` enabled. The REST API ru
 1. Each part of the plan must have a corresponding issue in the GitHub repository.
 2. Each issue must be worked on in a separate branch with name starting with `boxtime/`.
 3. Create commits accordingly and then a PR for each issue.
+
+## Plan Execution Standard
+When executing a plan, follow this workflow:
+1. **Plan** — create or review the implementation plan.
+2. **Branch** — create a `boxtime/` branch for each plan task.
+3. **Commits** — make commits for each task on its branch.
+4. **PR** — open a pull request for each task, referencing the corresponding issue.
