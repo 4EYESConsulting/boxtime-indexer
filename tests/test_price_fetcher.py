@@ -71,7 +71,7 @@ def test_parse_prices_empty():
 
 def test_create_client_demo():
     """Demo config creates client with demo_api_key."""
-    with patch("src.price_fetcher.Coingecko") as MockCG:
+    with patch("src.price_fetcher.AsyncCoingecko") as MockCG:
         _create_client(_make_config(pro=False))
         MockCG.assert_called_once_with(
             demo_api_key="test-key", environment="demo"
@@ -80,7 +80,7 @@ def test_create_client_demo():
 
 def test_create_client_pro():
     """Pro config creates client with pro_api_key."""
-    with patch("src.price_fetcher.Coingecko") as MockCG:
+    with patch("src.price_fetcher.AsyncCoingecko") as MockCG:
         _create_client(_make_config(pro=True))
         MockCG.assert_called_once_with(pro_api_key="test-key")
 
@@ -90,29 +90,31 @@ def test_create_client_pro():
 # ---------------------------------------------------------------------------
 
 
-def test_fetch_market_chart_parses_response():
+@pytest.mark.asyncio
+async def test_fetch_market_chart_parses_response():
     """Calls market_chart.get and parses the prices list."""
-    mock_client = MagicMock()
+    mock_client = AsyncMock()
     mock_client.coins.market_chart.get.return_value = SimpleNamespace(
         prices=[
             [1609459200000.0, 1.50],
             [1609545600000.0, 2.00],
         ]
     )
-    result = _fetch_market_chart(mock_client, "max")
-    mock_client.coins.market_chart.get.assert_called_once_with(
+    result = await _fetch_market_chart(mock_client, "max")
+    mock_client.coins.market_chart.get.assert_awaited_once_with(
         "ergo", days="max", vs_currency="usd", interval="daily"
     )
     assert len(result) == 2
 
 
-def test_fetch_market_chart_empty_prices():
+@pytest.mark.asyncio
+async def test_fetch_market_chart_empty_prices():
     """Returns empty list when prices is None."""
-    mock_client = MagicMock()
+    mock_client = AsyncMock()
     mock_client.coins.market_chart.get.return_value = SimpleNamespace(
         prices=None
     )
-    assert _fetch_market_chart(mock_client, "30") == []
+    assert await _fetch_market_chart(mock_client, "30") == []
 
 
 # ---------------------------------------------------------------------------

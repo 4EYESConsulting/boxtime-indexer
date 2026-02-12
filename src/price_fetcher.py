@@ -1,12 +1,11 @@
 """Fetch daily ERG/USD prices from CoinGecko and persist to the database."""
 
-import asyncio
 import datetime
 import logging
 from typing import List, Tuple
 
 import asyncpg
-from coingecko_sdk import Coingecko
+from coingecko_sdk import AsyncCoingecko
 
 from src.config import Config
 from src.db import PriceRow, get_latest_price_date, upsert_prices_batch
@@ -14,11 +13,11 @@ from src.db import PriceRow, get_latest_price_date, upsert_prices_batch
 logger = logging.getLogger(__name__)
 
 
-def _create_client(config: Config) -> Coingecko:
+def _create_client(config: Config) -> AsyncCoingecko:
     """Create a CoinGecko SDK client based on config."""
     if config.coingecko_pro:
-        return Coingecko(pro_api_key=config.coingecko_api_key)
-    return Coingecko(
+        return AsyncCoingecko(pro_api_key=config.coingecko_api_key)
+    return AsyncCoingecko(
         demo_api_key=config.coingecko_api_key, environment="demo"
     )
 
@@ -39,11 +38,11 @@ def _parse_prices(
     return sorted(by_date.items())
 
 
-def _fetch_market_chart(
-    client: Coingecko, days: str
+async def _fetch_market_chart(
+    client: AsyncCoingecko, days: str
 ) -> List[PriceRow]:
     """Fetch daily ERG/USD prices from CoinGecko market chart endpoint."""
-    response = client.coins.market_chart.get(
+    response = await client.coins.market_chart.get(
         "ergo", days=days, vs_currency="usd", interval="daily"
     )
     if not response.prices:
@@ -58,7 +57,7 @@ async def backfill_prices(
     client = _create_client(config)
 
     logger.info("Starting price backfill (days=max)")
-    rows = await asyncio.to_thread(_fetch_market_chart, client, "max")
+    rows = await _fetch_market_chart(client, "max")
     if not rows:
         logger.warning("No price data returned from CoinGecko")
         return
@@ -89,9 +88,7 @@ async def sync_latest_prices(
 
     client = _create_client(config)
     # Fetch enough days to cover the gap (add 1 for overlap).
-    rows = await asyncio.to_thread(
-        _fetch_market_chart, client, str(gap + 1)
-    )
+    rows = await _fetch_market_chart(client, str(gap + 1))
     if not rows:
         return
 
