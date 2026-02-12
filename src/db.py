@@ -1,11 +1,15 @@
 """PostgreSQL init and query helpers."""
 
+import asyncio
 import logging
 from typing import List, Optional, Sequence, Tuple
 
 import asyncpg
 
 logger = logging.getLogger(__name__)
+
+_DB_CONNECT_RETRIES = 30
+_DB_CONNECT_INTERVAL = 2  # seconds
 
 _CREATE_TABLE = """
 CREATE TABLE IF NOT EXISTS cointime (
@@ -32,12 +36,28 @@ Row = Tuple[int, int, int, int, int]
 
 
 async def init_db(database_url: str) -> asyncpg.Pool:
-    """Create a connection pool and ensure the cointime table exists."""
-    pool = await asyncpg.create_pool(database_url)
-    async with pool.acquire() as conn:
-        await conn.execute(_CREATE_TABLE)
-    logger.info("Database initialized")
-    return pool
+    """Create a connection pool and ensure the cointime table exists.
+
+    Retries the connection to tolerate a database that is still starting up.
+    """
+    for attempt in range(1, _DB_CONNECT_RETRIES + 1):
+        try:
+            pool = await asyncpg.create_pool(database_url)
+            async with pool.acquire() as conn:
+                await conn.execute(_CREATE_TABLE)
+            logger.info("Database initialized")
+            return pool
+        except (OSError, asyncpg.PostgresError) as exc:
+            if attempt == _DB_CONNECT_RETRIES:
+                raise
+            logger.info(
+                "Database not ready (attempt %d/%d): %s",
+                attempt,
+                _DB_CONNECT_RETRIES,
+                exc,
+            )
+            await asyncio.sleep(_DB_CONNECT_INTERVAL)
+    raise RuntimeError("Unreachable")
 
 
 async def get_max_height(pool: asyncpg.Pool) -> Optional[int]:

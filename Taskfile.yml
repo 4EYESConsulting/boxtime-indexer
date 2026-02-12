@@ -6,24 +6,34 @@ tasks:
   # ---------------------------------------------------------------------------
 
   up:
-    desc: Start the indexer with an external Ergo node (set NODE_URL in .env)
+    desc: Start the indexer with local DB and local node
     cmds:
-      - docker compose up -d
+      - docker compose --profile local-db --profile local-node up -d
 
-  up:local-node:
-    desc: Start the indexer with the bundled local Ergo node
+  up:remote-node:
+    desc: Start the indexer with local DB and remote node (set NODE_URL in .env)
+    cmds:
+      - docker compose --profile local-db up -d
+
+  up:remote-db:
+    desc: Start the indexer with remote DB and local node (set DATABASE_URL in .env)
     cmds:
       - docker compose --profile local-node up -d
+
+  up:remote:
+    desc: Start the indexer with remote DB and remote node (set DATABASE_URL and NODE_URL in .env)
+    cmds:
+      - docker compose up -d
 
   down:
     desc: Stop all containers
     cmds:
-      - docker compose --profile local-node down
+      - docker compose --profile local-db --profile local-node down
 
   clean:
     desc: Remove all containers, images, and volumes
     cmds:
-      - docker compose --profile local-node down -v --rmi all
+      - docker compose --profile local-db --profile local-node down -v --rmi all
 
   status:
     desc: Print indexing status from the database
