@@ -16,11 +16,12 @@ fi
 db_url="${DATABASE_URL:-postgresql://boxtime:boxtime@db:5432/boxtime}"
 
 psql_query() {
-    # Try local db container first, fall back to direct psql for remote DB
+    # Try local db container first, fall back to a throwaway postgres container
     if docker compose ps --status running db 2>/dev/null | grep -q db; then
         docker compose exec -T db psql -U boxtime -d boxtime -t -A -c "$1"
     else
-        psql "$db_url" -t -A -c "$1"
+        docker run --rm --network host postgres:17-alpine \
+            psql "$db_url" -t -A -c "$1"
     fi
 }
 
