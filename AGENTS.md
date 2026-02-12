@@ -8,7 +8,7 @@ boxtime-indexer is the ETL/indexer companion to the [boxtime](https://github.com
 ## Architecture
 - **Ergo Node**: local node running in Docker with `extraIndex = true`. Requires v6.0.1+ for the `/blockchain/block/byHeaderId/{headerId}` endpoint.
 - **Indexer**: walks Ergo block heights, computes CBC/CBD/CBS per height via 3 HTTP calls to the local node, and writes results to PostgreSQL.
-- **Database**: PostgreSQL with one row per block height. Columns: `height`, `timestamp`, `cbc`, `cbd`, `cbs`. All values in nanoERGs (BIGINT).
+- **Database**: PostgreSQL with one row per block height. Columns: `height`, `timestamp`, `cbc`, `cbd`, `cbs`. All values in nanoERGs (NUMERIC for cbc/cbd/cbs as CBD can exceed BIGINT range).
 - **Incremental sync**: on each run, the indexer fills gaps, resumes from `MAX(height)`, and processes new blocks.
 - **Backfill**: initial population covers ~1.7M+ heights. Uses concurrent fetching bounded by a semaphore.
 - **Reorg handling**: poll loop verifies parent hash continuity and rolls back on chain reorganizations.
