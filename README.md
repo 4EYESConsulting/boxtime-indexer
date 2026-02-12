@@ -35,8 +35,8 @@ To skip the full backfill (~1.7M+ blocks), download a pre-built database snapsho
 ```bash
 # Download the latest snapshot from GitHub Releases
 # Then restore it:
-./scripts/snapshot.sh restore boxtime-pgdata-<height>.tar.gz
-docker compose up -d
+task snapshot:restore TARBALL=boxtime-pgdata-<height>.tar.gz
+task up
 ```
 
 The indexer resumes from `MAX(height)` automatically.
@@ -86,6 +86,8 @@ All cointime values are in **nanoERGs** (1 ERG = 1,000,000,000 nanoERG).
 2. `GET /blocks/at/{h}` → header ID
 3. `GET /blockchain/block/byHeaderId/{id}` → indexed block with full transaction inputs → compute CBD + extract timestamp
 
+CBD excludes the **emission contract box**, which carries the unissued supply and is consumed/recreated every block. Including it would massively inflate CBD. The emission box is identified by its constant ergoTree; when emissions eventually run out, the filter simply matches nothing.
+
 CBS = CBC − CBD.
 
 **Startup sequence:**
@@ -105,21 +107,32 @@ CBS = CBC − CBD.
 Produce a snapshot after backfill completes:
 
 ```bash
-./scripts/snapshot.sh produce <height>
+task snapshot:produce HEIGHT=1700000
+```
+
+Restore a previously produced snapshot:
+
+```bash
+task snapshot:restore TARBALL=boxtime-pgdata-1700000.tar.gz
+task up
 ```
 
 This stops containers, tars the PostgreSQL data volume, and outputs a `boxtime-pgdata-<height>.tar.gz` file ready to upload as a GitHub Release.
 
 ## Development
 
-Requires [pixi](https://pixi.sh). To run locally (outside Docker):
+Requires [pixi](https://pixi.sh) and (optionally) [Task](https://taskfile.dev). A `Taskfile.yml` provides shortcuts for common operations:
 
-```bash
-pixi install
-pixi run start
-```
-
-You'll need a running Ergo node and PostgreSQL instance. Set `NODE_URL` and `DATABASE_URL` in `.env` accordingly.
+| Task | Description |
+|---|---|
+| `task up` | Start the indexer with an external Ergo node |
+| `task up:local-node` | Start the indexer with the bundled local node |
+| `task down` | Stop all containers |
+| `task clean` | Remove all containers, images, and volumes |
+| `task install` | Install Python dependencies with pixi |
+| `task test` | Run the test suite |
+| `task snapshot:produce HEIGHT=<h>` | Produce a DB snapshot at the given height |
+| `task snapshot:restore TARBALL=<file>` | Restore a DB snapshot from a tarball |
 
 ## License
 

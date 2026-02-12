@@ -15,7 +15,7 @@ boxtime-indexer is the ETL/indexer companion to the [boxtime](https://github.com
 
 ## Key Domain Concepts
 - **Coinblocks Created (CBC)**: total circulating supply at a block height (nanoERGs). Sourced from the node's `GET /emission/at/{height}` endpoint.
-- **Coinblocks Destroyed (CBD)**: `sum(input.value × (height - input.inclusion_height))` for all transaction inputs in a block. Sourced from `GET /blockchain/block/byHeaderId/{headerId}` which returns indexed transactions with full input data.
+- **Coinblocks Destroyed (CBD)**: `sum(input.value × (height - input.inclusion_height))` for all transaction inputs in a block, **excluding the emission contract box** (identified by its constant ergoTree). The emission box carries the unissued supply and is consumed/recreated each block; including it would massively inflate CBD. Sourced from `GET /blockchain/block/byHeaderId/{headerId}` which returns indexed transactions with full input data.
 - **Coinblocks Stored (CBS)**: `CBC - CBD`.
 - All values are in **nanoERGs** (1 ERG = 1,000,000,000 nanoERG).
 
@@ -24,5 +24,5 @@ Node must be v6.0.1+ with `ergo.node.extraIndex = true` enabled. The REST API ru
 
 ## Workflow Rules
 1. Each part of the plan must have a corresponding issue in the GitHub repository.
-2. Each issue must be worked on in a separate branch with name starting with `ldgaetano/`.
+2. Each issue must be worked on in a separate branch with name starting with `boxtime/`.
 3. Create commits accordingly and then a PR for each issue.
