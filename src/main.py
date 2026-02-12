@@ -10,6 +10,7 @@ from src.config import load_config
 from src.db import init_db, insert_genesis
 from src.fetcher import _get_json
 from src.indexer import backfill, gap_fill, poll_loop
+from src.price_fetcher import backfill_prices
 
 logger = logging.getLogger(__name__)
 
@@ -67,6 +68,10 @@ async def run() -> None:
 
             # Backfill to chain tip
             await backfill(session, pool, config, shutdown_event)
+
+            # Backfill price data if CoinGecko API key is configured
+            if config.coingecko_api_key:
+                await backfill_prices(pool, config)
 
             # Enter poll loop
             if not shutdown_event.is_set():
