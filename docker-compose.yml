@@ -1,6 +1,7 @@
 services:
   node:
     image: ergoplatform/ergo:latest
+    profiles: [local-node]
     volumes:
       - nodedata:/home/ergo/.ergo
       - ./ergo.conf:/home/ergo/ergo.conf:ro
@@ -32,8 +33,6 @@ services:
   indexer:
     build: .
     depends_on:
-      node:
-        condition: service_healthy
       db:
         condition: service_healthy
     env_file: .env
