@@ -1,6 +1,7 @@
 """PostgreSQL init and query helpers."""
 
 import asyncio
+import datetime
 import logging
 import ssl
 from urllib.parse import urlparse
@@ -15,13 +16,20 @@ _DB_CONNECT_INTERVAL = 2  # seconds
 
 _LOCAL_HOSTS = frozenset({"localhost", "127.0.0.1", "::1", "db"})
 
-_CREATE_TABLE = """
+_CREATE_COINTIME_TABLE = """
 CREATE TABLE IF NOT EXISTS cointime (
     height    INTEGER PRIMARY KEY,
     timestamp BIGINT NOT NULL,
     cbc       NUMERIC NOT NULL,
     cbd       NUMERIC NOT NULL,
     cbs       NUMERIC NOT NULL
+);
+"""
+
+_CREATE_PRICES_TABLE = """
+CREATE TABLE IF NOT EXISTS erg_prices (
+    date      DATE PRIMARY KEY,
+    price_usd DOUBLE PRECISION NOT NULL
 );
 """
 
@@ -63,7 +71,8 @@ async def init_db(database_url: str) -> asyncpg.Pool:
         try:
             pool = await asyncpg.create_pool(database_url, **kwargs)
             async with pool.acquire() as conn:
-                await conn.execute(_CREATE_TABLE)
+                await conn.execute(_CREATE_COINTIME_TABLE)
+                await conn.execute(_CREATE_PRICES_TABLE)
             logger.info("Database initialized")
             return pool
         except (OSError, asyncpg.PostgresError) as exc:
@@ -127,3 +136,33 @@ async def insert_genesis(pool: asyncpg.Pool, timestamp: int) -> None:
             0, timestamp, 0, 0, 0,
         )
     logger.info("Genesis row (height 0) ensured")
+
+
+# --------------- erg_prices helpers ---------------
+
+PriceRow = Tuple[datetime.date, float]
+
+_UPSERT_PRICE = """
+INSERT INTO erg_prices (date, price_usd)
+VALUES ($1, $2)
+ON CONFLICT (date) DO UPDATE SET
+    price_usd = EXCLUDED.price_usd;
+"""
+
+
+async def upsert_prices_batch(
+    pool: asyncpg.Pool, rows: Sequence[PriceRow]
+) -> None:
+    """Batch upsert rows into the erg_prices table."""
+    if not rows:
+        return
+    async with pool.acquire() as conn:
+        await conn.executemany(_UPSERT_PRICE, rows)
+
+
+async def get_latest_price_date(
+    pool: asyncpg.Pool,
+) -> Optional[datetime.date]:
+    """Return the most recent date in erg_prices, or None if empty."""
+    async with pool.acquire() as conn:
+        return await conn.fetchval("SELECT MAX(date) FROM erg_prices")
