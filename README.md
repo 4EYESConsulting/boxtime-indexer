@@ -86,6 +86,8 @@ All cointime values are in **nanoERGs** (1 ERG = 1,000,000,000 nanoERG).
 2. `GET /blocks/at/{h}` → header ID
 3. `GET /blockchain/block/byHeaderId/{id}` → indexed block with full transaction inputs → compute CBD + extract timestamp
 
+CBD excludes the **emission contract box**, which carries the unissued supply and is consumed/recreated every block. Including it would massively inflate CBD. The emission box is identified by its constant ergoTree; when emissions eventually run out, the filter simply matches nothing.
+
 CBS = CBC − CBD.
 
 **Startup sequence:**
@@ -112,10 +114,21 @@ This stops containers, tars the PostgreSQL data volume, and outputs a `boxtime-p
 
 ## Development
 
-Requires [pixi](https://pixi.sh). To run locally (outside Docker):
+Requires [pixi](https://pixi.sh) and (optionally) [Task](https://taskfile.dev). A `Taskfile.yml` provides shortcuts for common operations:
+
+| Task | Description |
+|---|---|
+| `task up` | Start the indexer with an external Ergo node |
+| `task up:local-node` | Start the indexer with the bundled local node |
+| `task down` | Stop all containers |
+| `task clean` | Remove all containers, images, and volumes |
+| `task install` | Install Python dependencies with pixi |
+| `task test` | Run the test suite |
+
+To run locally (outside Docker):
 
 ```bash
-pixi install
+task install
 pixi run start
 ```
 
