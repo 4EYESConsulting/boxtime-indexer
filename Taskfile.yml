@@ -1,0 +1,41 @@
+version: "3"
+
+tasks:
+  # ---------------------------------------------------------------------------
+  # Docker
+  # ---------------------------------------------------------------------------
+
+  up:
+    desc: Start the indexer with an external Ergo node (set NODE_URL in .env)
+    cmds:
+      - docker compose up -d --build
+
+  up:local-node:
+    desc: Start the indexer with the bundled local Ergo node
+    cmds:
+      - docker compose --profile local-node up -d --build
+
+  down:
+    desc: Stop all containers
+    cmds:
+      - docker compose --profile local-node down
+
+  clean:
+    desc: Remove all containers, images, and volumes
+    cmds:
+      - docker compose --profile local-node down -v --rmi all
+
+  # ---------------------------------------------------------------------------
+  # Development
+  # ---------------------------------------------------------------------------
+
+  install:
+    desc: Install Python dependencies with pixi
+    cmds:
+      - pixi install
+
+  test:
+    desc: Run the test suite
+    deps: [install]
+    cmds:
+      - pixi run test
