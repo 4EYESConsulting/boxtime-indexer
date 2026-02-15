@@ -14,9 +14,9 @@ def test_load_config_defaults():
         if k
         not in {
             "NODE_URL",
-            "DATABASE_URL",
-            "COINGECKO_API_KEY",
-            "COINGECKO_PRO",
+            "PRICE_CSV_PATH",
+            "BOOTSTRAP_CSV_PATH",
+            "CSV_OUTPUT_PATH",
             "CHUNK_SIZE",
             "MAX_CONCURRENT",
             "POLL_INTERVAL",
@@ -27,9 +27,9 @@ def test_load_config_defaults():
         cfg = load_config()
 
     assert cfg.node_url == "http://node:9053"
-    assert cfg.database_url == "postgresql://boxtime:boxtime@db:5432/boxtime"
-    assert cfg.coingecko_api_key is None
-    assert cfg.coingecko_pro is False
+    assert cfg.price_csv_path == "input/erg_prices.csv"
+    assert cfg.bootstrap_csv_path == "input/cointime.csv"
+    assert cfg.csv_output_path == "output/cointime.csv"
     assert cfg.chunk_size == 5000
     assert cfg.max_concurrent == 50
     assert cfg.poll_interval == 60
@@ -40,9 +40,9 @@ def test_load_config_from_env():
     """load_config reads from environment variables."""
     env = {
         "NODE_URL": "http://mynode:9053",
-        "DATABASE_URL": "postgresql://u:p@host/db",
-        "COINGECKO_API_KEY": "my-cg-key",
-        "COINGECKO_PRO": "true",
+        "PRICE_CSV_PATH": "custom/prices.csv",
+        "BOOTSTRAP_CSV_PATH": "custom/bootstrap.csv",
+        "CSV_OUTPUT_PATH": "custom/output.csv",
         "CHUNK_SIZE": "100",
         "MAX_CONCURRENT": "10",
         "POLL_INTERVAL": "30",
@@ -52,9 +52,9 @@ def test_load_config_from_env():
         cfg = load_config()
 
     assert cfg.node_url == "http://mynode:9053"
-    assert cfg.database_url == "postgresql://u:p@host/db"
-    assert cfg.coingecko_api_key == "my-cg-key"
-    assert cfg.coingecko_pro is True
+    assert cfg.price_csv_path == "custom/prices.csv"
+    assert cfg.bootstrap_csv_path == "custom/bootstrap.csv"
+    assert cfg.csv_output_path == "custom/output.csv"
     assert cfg.chunk_size == 100
     assert cfg.max_concurrent == 10
     assert cfg.poll_interval == 30
@@ -65,9 +65,9 @@ def test_config_is_frozen():
     """Config is immutable."""
     cfg = Config(
         node_url="http://x",
-        database_url="postgresql://x",
-        coingecko_api_key=None,
-        coingecko_pro=False,
+        price_csv_path="p.csv",
+        bootstrap_csv_path="b.csv",
+        csv_output_path="o.csv",
         chunk_size=1,
         max_concurrent=1,
         poll_interval=1,
