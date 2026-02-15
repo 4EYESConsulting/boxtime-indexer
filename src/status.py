@@ -3,7 +3,6 @@
 import argparse
 import csv
 import sys
-from datetime import datetime
 from pathlib import Path
 
 
@@ -74,7 +73,7 @@ def main():
 
     if max_synced == 0:
         print("No data found. Run the indexer to start syncing.")
-        sys.exit(1)
+        sys.exit(0)
 
     bootstrap_date_range = get_date_range(bootstrap_rows)
     output_date_range = get_date_range(output_rows)
