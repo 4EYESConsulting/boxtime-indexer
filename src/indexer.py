@@ -1,21 +1,15 @@
-"""Chunked processing loop with reorg detection."""
+"""Backfill indexing with price date limit."""
 
 import asyncio
 import logging
-from typing import Optional
+from datetime import date as date_type
+from typing import Dict, List, Optional
 
 import aiohttp
-import asyncpg
 
 from src.config import Config
-from src.db import (
-    delete_from_height,
-    get_max_height,
-    get_missing_heights,
-    upsert_batch,
-)
-from src.fetcher import fetch_chunk, _get_json
-from src.price_fetcher import sync_latest_prices
+from src.csv_writer import get_max_height
+from src.fetcher import HeightData, fetch_chunk, _get_json
 
 logger = logging.getLogger(__name__)
 
@@ -32,170 +26,105 @@ async def _get_chain_height(session: aiohttp.ClientSession, node_url: str) -> in
     return indexed["indexedHeight"]
 
 
-async def _get_block_header(
-    session: aiohttp.ClientSession, node_url: str, height: int
-) -> Optional[dict]:
-    """Fetch the block header at a given height."""
-    header_ids = await _get_json(session, f"{node_url}/blocks/at/{height}")
-    if not header_ids:
-        return None
-    header_id = header_ids[0] if isinstance(header_ids, list) else header_ids
-    return await _get_json(session, f"{node_url}/blocks/{header_id}/header")
-
-
-async def gap_fill(
+async def _fetch_until_date(
     session: aiohttp.ClientSession,
-    pool: asyncpg.Pool,
-    config: Config,
-) -> None:
-    """Find and fill any missing heights in the database."""
-    missing = await get_missing_heights(pool)
-    if not missing:
-        return
-    logger.info("Found %d missing heights, filling gaps", len(missing))
-    for i in range(0, len(missing), config.chunk_size):
-        chunk = missing[i : i + config.chunk_size]
-        results = await fetch_chunk(
-            session, config.node_url, chunk, config.max_concurrent
-        )
-        if results:
-            await upsert_batch(pool, [r.as_row() for r in results])
-            logger.info(
-                "Gap-filled %d/%d heights", min(i + config.chunk_size, len(missing)), len(missing)
-            )
-
-
-async def backfill(
-    session: aiohttp.ClientSession,
-    pool: asyncpg.Pool,
-    config: Config,
+    node_url: str,
+    start_height: int,
+    max_price_date: date_type,
+    chunk_size: int,
+    max_concurrent: int,
     shutdown_event: asyncio.Event,
-) -> None:
-    """Process all heights from the resume point to the chain tip."""
-    max_height = await get_max_height(pool)
-    start = (max_height + 1) if max_height is not None else config.start_height
-    chain_height = await _get_chain_height(session, config.node_url)
+) -> List[HeightData]:
+    """Fetch blocks from start_height until block_date exceeds max_price_date."""
+    chain_height = await _get_chain_height(session, node_url)
 
-    if start > chain_height:
+    if start_height > chain_height:
         logger.info("Already up to date at height %d", chain_height)
-        return
+        return []
 
-    total = chain_height - start + 1
-    processed = 0
-    logger.info("Backfilling heights %d–%d (%d total)", start, chain_height, total)
+    all_results: List[HeightData] = []
 
-    for chunk_start in range(start, chain_height + 1, config.chunk_size):
+    logger.info(
+        "Backfilling heights %d–%d until block date %s",
+        start_height,
+        chain_height,
+        max_price_date,
+    )
+
+    for chunk_start in range(start_height, chain_height + 1, chunk_size):
         if shutdown_event.is_set():
             logger.info("Shutdown requested, stopping backfill")
-            return
+            break
 
-        chunk_end = min(chunk_start + config.chunk_size - 1, chain_height)
+        chunk_end = min(chunk_start + chunk_size - 1, chain_height)
         heights = list(range(chunk_start, chunk_end + 1))
 
-        results = await fetch_chunk(
-            session, config.node_url, heights, config.max_concurrent
-        )
-        if results:
-            await upsert_batch(pool, [r.as_row() for r in results])
+        results = await fetch_chunk(session, node_url, heights, max_concurrent)
 
-        processed += len(heights)
-        pct = processed * 100 / total
-        logger.info(
-            "Indexed heights %d–%d (%.1f%%)", chunk_start, chunk_end, pct
-        )
+        if not results:
+            continue
 
+        filtered_results: List[HeightData] = []
+        stop_backfill = False
 
-async def _detect_reorg(
-    session: aiohttp.ClientSession, node_url: str, height: int
-) -> bool:
-    """Check if there is a reorg at the given height.
-
-    Compares the parentId of the block at `height` with the id of the
-    block at `height - 1`. Returns True if a reorg is detected.
-    """
-    if height <= 1:
-        return False
-
-    header = await _get_block_header(session, node_url, height)
-    prev_header = await _get_block_header(session, node_url, height - 1)
-
-    if header is None or prev_header is None:
-        logger.warning("Could not fetch headers for reorg check at height %d", height)
-        return False
-
-    if header["parentId"] != prev_header["id"]:
-        logger.warning(
-            "Reorg detected at height %d: parentId=%s != prev.id=%s",
-            height,
-            header["parentId"],
-            prev_header["id"],
-        )
-        return True
-    return False
-
-
-async def poll_loop(
-    session: aiohttp.ClientSession,
-    pool: asyncpg.Pool,
-    config: Config,
-    shutdown_event: asyncio.Event,
-) -> None:
-    """Poll for new blocks and index them, with reorg detection."""
-    logger.info("Entering poll loop (interval=%ds)", config.poll_interval)
-
-    while not shutdown_event.is_set():
-        try:
-            max_height = await get_max_height(pool)
-            if max_height is None:
-                max_height = 0
-
-            chain_height = await _get_chain_height(session, config.node_url)
-
-            if chain_height <= max_height:
-                await asyncio.sleep(config.poll_interval)
-                continue
-
-            next_height = max_height + 1
-
-            # Check for reorg before indexing
-            if await _detect_reorg(session, config.node_url, next_height):
-                # Walk back to find the fork point
-                fork_height = next_height
-                while fork_height > 1:
-                    fork_height -= 1
-                    if not await _detect_reorg(
-                        session, config.node_url, fork_height
-                    ):
-                        break
-                logger.info("Rolling back to fork point at height %d", fork_height)
-                await delete_from_height(pool, fork_height)
-                continue  # Re-enter loop to re-process from fork point
-
-            # Sync latest price data
-            if config.coingecko_api_key:
-                try:
-                    await sync_latest_prices(pool, config)
-                except Exception:
-                    logger.exception("Error syncing price data")
-
-            # Index new blocks in chunks
-            heights = list(range(next_height, chain_height + 1))
-            for i in range(0, len(heights), config.chunk_size):
-                if shutdown_event.is_set():
-                    return
-                chunk = heights[i : i + config.chunk_size]
-                results = await fetch_chunk(
-                    session, config.node_url, chunk, config.max_concurrent
+        for r in results:
+            if r.block_date > max_price_date:
+                logger.info(
+                    "Reached price date limit at height %d (block_date=%s > max_price_date=%s)",
+                    r.height,
+                    r.block_date,
+                    max_price_date,
                 )
-                if results:
-                    await upsert_batch(pool, [r.as_row() for r in results])
-                    logger.info(
-                        "Poll: indexed heights %d–%d",
-                        chunk[0],
-                        chunk[-1],
-                    )
+                stop_backfill = True
+                break
+            filtered_results.append(r)
 
-        except Exception:
-            logger.exception("Error in poll loop")
+        all_results.extend(filtered_results)
 
-        await asyncio.sleep(config.poll_interval)
+        if stop_backfill:
+            break
+
+        logger.info("Indexed heights %d–%d", chunk_start, chunk_end)
+
+    return all_results
+
+
+async def run_backfill(
+    session: aiohttp.ClientSession,
+    config: Config,
+    bootstrap_data: List[HeightData],
+    price_map: Dict[date_type, float],
+    max_price_date: date_type,
+    shutdown_event: asyncio.Event,
+) -> List[HeightData]:
+    """Run the backfill process and return all data for output."""
+    max_bootstrap_height = get_max_height(bootstrap_data)
+    start = (max_bootstrap_height + 1) if max_bootstrap_height is not None else config.start_height
+
+    logger.info(
+        "Starting backfill: bootstrap max height=%s, start=%d, max_price_date=%s",
+        max_bootstrap_height,
+        start,
+        max_price_date,
+    )
+
+    new_data = await _fetch_until_date(
+        session=session,
+        node_url=config.node_url,
+        start_height=start,
+        max_price_date=max_price_date,
+        chunk_size=config.chunk_size,
+        max_concurrent=config.max_concurrent,
+        shutdown_event=shutdown_event,
+    )
+
+    all_data = bootstrap_data + new_data
+
+    logger.info(
+        "Backfill complete: %d bootstrap + %d new = %d total rows",
+        len(bootstrap_data),
+        len(new_data),
+        len(all_data),
+    )
+
+    return all_data

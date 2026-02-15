@@ -15,29 +15,13 @@ services:
     restart: unless-stopped
     env_file: .env
 
-  db:
-    image: postgres:17-alpine
-    profiles: [local-db]
-    ports:
-      - "5432:5432"
-    environment:
-      POSTGRES_USER: boxtime
-      POSTGRES_PASSWORD: boxtime
-      POSTGRES_DB: boxtime
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U boxtime"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    restart: unless-stopped
-
   indexer:
     build: .
+    volumes:
+      - ./input:/app/input
+      - ./output:/app/output
     env_file: .env
     restart: unless-stopped
 
 volumes:
   nodedata:
-  pgdata:
