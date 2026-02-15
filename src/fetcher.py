@@ -37,16 +37,24 @@ class HeightData:
     cbc: int
     cbd: int
     cbs: int
+    _block_date: datetime.date = None
 
     def as_row(self) -> tuple:
         return (self.height, self.timestamp, self.cbc, self.cbd, self.cbs)
 
     @property
     def block_date(self) -> datetime.date:
-        """Compute block date from timestamp (UTC)."""
+        """Compute block date from timestamp (UTC), or return stored value if set."""
+        if self._block_date is not None:
+            return self._block_date
         return datetime.datetime.fromtimestamp(
             self.timestamp / 1000, tz=datetime.timezone.utc
         ).date()
+
+    @block_date.setter
+    def block_date(self, value: datetime.date) -> None:
+        """Allow setting block_date for CSV loading."""
+        self._block_date = value
 
 
 async def _get_json(
