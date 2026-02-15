@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
-# status.sh — Print indexing status from the cointime database.
+# status.sh — Print indexing status from CSV files.
 #
 # Usage:
 #   ./scripts/status.sh
+#
+# Note: This script is deprecated. Use `python -m src.status` instead.
 
 set -euo pipefail
 

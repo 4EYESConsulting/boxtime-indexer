@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
-# snapshot.sh — Produce or restore boxtime-indexer database snapshots.
+# snapshot.sh — Produce or restore boxtime-indexer CSV snapshots.
 #
 # Usage:
 #   ./scripts/snapshot.sh produce <height>
 #   ./scripts/snapshot.sh restore <tarball>
+#
+# Note: This script is deprecated. CSV files can be backed up directly.
 
 set -euo pipefail
 

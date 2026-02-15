@@ -3,14 +3,12 @@
 This file provides guidance to WARP (warp.dev) when working with code in this repository.
 
 ## Project Overview
-boxtime-indexer is the ETL/indexer companion to the [boxtime](https://github.com/4EYESConsulting/boxtime) library. It connects to a local Ergo blockchain node, computes Cointime Economics metrics (coinblocks created, destroyed, stored) for each block height, and persists the results to a PostgreSQL database.
+boxtime-indexer is the ETL/indexer companion to the [boxtime](https://github.com/4EYESConsulting/boxtime) library. It connects to a local Ergo blockchain node, computes Cointime Economics metrics (coinblocks created, destroyed, stored) for each block height, and persists the results to CSV files.
 
 ## Architecture
 - **Ergo Node**: local node running in Docker with `extraIndex = true`. Requires v6.0.1+ for the `/blockchain/block/byHeaderId/{headerId}` endpoint.
-- **Indexer**: walks Ergo block heights, computes CBC/CBD/CBS per height via 3 HTTP calls to the local node, and writes results to PostgreSQL.
-- **Price Indexer** *(optional)*: fetches daily ERG/USD prices from CoinGecko and stores them in the `erg_prices` table. Requires a CoinGecko API key (`COINGECKO_API_KEY`). Supports both demo (free, 365-day history) and paid plans (set `COINGECKO_PRO=true`).
-- **Database**: PostgreSQL with two tables: `cointime` (one row per block height with CBC/CBD/CBS in nanoERGs) and `erg_prices` (one row per day with daily ERG/USD price, optional).
-- **Incremental sync**: on each run, the indexer fills gaps, resumes from `MAX(height)`, and processes new blocks.
+- **Indexer**: walks Ergo block heights, computes CBC/CBD/CBS per height via 3 HTTP calls to the local node, and writes results to CSV files.
+- **Incremental sync**: on each run, the indexer fills gaps, resumes from the last height in the CSV, and processes new blocks.
 - **Backfill**: initial population covers ~1.7M+ heights. Uses concurrent fetching bounded by a semaphore.
 - **Reorg handling**: poll loop verifies parent hash continuity and rolls back on chain reorganizations.
 
