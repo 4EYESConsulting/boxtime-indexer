@@ -1,6 +1,7 @@
 """Async Ergo node fetching for CBC/CBD/CBS per height."""
 
 import asyncio
+import datetime
 import logging
 from dataclasses import dataclass
 from typing import List, Optional
@@ -39,6 +40,13 @@ class HeightData:
 
     def as_row(self) -> tuple:
         return (self.height, self.timestamp, self.cbc, self.cbd, self.cbs)
+
+    @property
+    def block_date(self) -> datetime.date:
+        """Compute block date from timestamp (UTC)."""
+        return datetime.datetime.fromtimestamp(
+            self.timestamp / 1000, tz=datetime.timezone.utc
+        ).date()
 
 
 async def _get_json(
