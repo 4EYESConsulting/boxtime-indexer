@@ -1,6 +1,7 @@
 """Tests for src.indexer."""
 
 import asyncio
+from datetime import date
 from unittest.mock import AsyncMock, patch
 
 import aiohttp
@@ -8,7 +9,8 @@ import pytest
 from aioresponses import aioresponses
 
 from src.config import Config
-from src.indexer import _detect_reorg, _get_block_header, _get_chain_height, backfill
+from src.fetcher import HeightData
+from src.indexer import _get_chain_height, _fetch_until_date, run_backfill
 
 NODE = "http://test-node:9053"
 
@@ -16,9 +18,9 @@ NODE = "http://test-node:9053"
 def _make_config(**overrides) -> Config:
     defaults = dict(
         node_url=NODE,
-        database_url="postgresql://x",
-        coingecko_api_key=None,
-        coingecko_pro=False,
+        price_csv_path="input/erg_prices.csv",
+        bootstrap_csv_path="input/cointime.csv",
+        csv_output_path="output/cointime.csv",
         chunk_size=100,
         max_concurrent=5,
         poll_interval=10,
@@ -64,151 +66,150 @@ async def test_get_chain_height_missing_field():
 
 
 # ---------------------------------------------------------------------------
-# _get_block_header
+# _fetch_until_date
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_get_block_header_success():
+async def test_fetch_until_date_already_up_to_date():
+    """Returns empty list when already at chain height."""
     with aioresponses() as m:
-        m.get(f"{NODE}/blocks/at/10", payload=["hdr_abc"])
         m.get(
-            f"{NODE}/blocks/hdr_abc/header",
-            payload={"id": "hdr_abc", "parentId": "hdr_parent", "timestamp": 999},
+            f"{NODE}/blockchain/indexedHeight",
+            payload={"indexedHeight": 100},
         )
         async with aiohttp.ClientSession() as session:
-            header = await _get_block_header(session, NODE, 10)
-
-    assert header["id"] == "hdr_abc"
-    assert header["parentId"] == "hdr_parent"
+            results = await _fetch_until_date(
+                session=session,
+                node_url=NODE,
+                start_height=100,
+                max_price_date=date(2025, 1, 1),
+                chunk_size=10,
+                max_concurrent=5,
+                shutdown_event=asyncio.Event(),
+            )
+    assert results == []
 
 
 @pytest.mark.asyncio
-async def test_get_block_header_not_found():
+async def test_fetch_until_date_stops_at_price_date():
+    """Stops fetching when block_date exceeds max_price_date."""
+    mock_results = [
+        HeightData(height=10, timestamp=1561939200000, cbc=100, cbd=10, cbs=90),
+        HeightData(height=11, timestamp=1562025600000, cbc=100, cbd=10, cbs=90),
+        HeightData(height=12, timestamp=1563840000000, cbc=100, cbd=10, cbs=90),
+    ]
+
     with aioresponses() as m:
-        m.get(f"{NODE}/blocks/at/99999", status=404)
-        async with aiohttp.ClientSession() as session:
-            header = await _get_block_header(session, NODE, 99999)
-    assert header is None
-
-
-# ---------------------------------------------------------------------------
-# _detect_reorg
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_detect_reorg_no_reorg():
-    with aioresponses() as m:
-        m.get(f"{NODE}/blocks/at/10", payload=["hdr10"])
         m.get(
-            f"{NODE}/blocks/hdr10/header",
-            payload={"id": "hdr10", "parentId": "hdr9"},
+            f"{NODE}/blockchain/indexedHeight",
+            payload={"indexedHeight": 12},
         )
-        m.get(f"{NODE}/blocks/at/9", payload=["hdr9"])
-        m.get(
-            f"{NODE}/blocks/hdr9/header",
-            payload={"id": "hdr9", "parentId": "hdr8"},
-        )
-        async with aiohttp.ClientSession() as session:
-            assert await _detect_reorg(session, NODE, 10) is False
+        with patch("src.indexer.fetch_chunk", return_value=mock_results):
+            async with aiohttp.ClientSession() as session:
+                results = await _fetch_until_date(
+                    session=session,
+                    node_url=NODE,
+                    start_height=10,
+                    max_price_date=date(2019, 7, 22),
+                    chunk_size=10,
+                    max_concurrent=5,
+                    shutdown_event=asyncio.Event(),
+                )
+
+    assert len(results) == 2
+    assert results[0].height == 10
+    assert results[1].height == 11
 
 
 @pytest.mark.asyncio
-async def test_detect_reorg_detected():
-    with aioresponses() as m:
-        m.get(f"{NODE}/blocks/at/10", payload=["hdr10"])
-        m.get(
-            f"{NODE}/blocks/hdr10/header",
-            payload={"id": "hdr10", "parentId": "hdr9_fork"},
-        )
-        m.get(f"{NODE}/blocks/at/9", payload=["hdr9"])
-        m.get(
-            f"{NODE}/blocks/hdr9/header",
-            payload={"id": "hdr9", "parentId": "hdr8"},
-        )
-        async with aiohttp.ClientSession() as session:
-            assert await _detect_reorg(session, NODE, 10) is True
-
-
-@pytest.mark.asyncio
-async def test_detect_reorg_at_height_1():
-    """No reorg possible at height 1."""
-    async with aiohttp.ClientSession() as session:
-        assert await _detect_reorg(session, NODE, 1) is False
-
-
-@pytest.mark.asyncio
-async def test_detect_reorg_header_unavailable():
-    """Returns False when headers can't be fetched."""
-    with aioresponses() as m:
-        m.get(f"{NODE}/blocks/at/10", status=500)
-        m.get(f"{NODE}/blocks/at/9", status=500)
-        async with aiohttp.ClientSession() as session:
-            assert await _detect_reorg(session, NODE, 10) is False
-
-
-# ---------------------------------------------------------------------------
-# backfill
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_backfill_already_up_to_date():
-    """backfill returns immediately when DB is ahead of chain."""
-    config = _make_config()
-    pool = AsyncMock()
-    shutdown = asyncio.Event()
-
-    with (
-        patch("src.indexer.get_max_height", return_value=500),
-        patch("src.indexer._get_chain_height", return_value=500),
-        patch("src.indexer.fetch_chunk") as mock_fetch,
-    ):
-        async with aiohttp.ClientSession() as session:
-            await backfill(session, pool, config, shutdown)
-
-    mock_fetch.assert_not_called()
-
-
-@pytest.mark.asyncio
-async def test_backfill_processes_heights():
-    """backfill fetches and upserts missing heights."""
-    config = _make_config(chunk_size=5)
-    pool = AsyncMock()
-    shutdown = asyncio.Event()
-
-    from src.fetcher import HeightData
-
-    mock_results = [HeightData(h, 1000, 100, 10, 90) for h in range(6, 11)]
-
-    with (
-        patch("src.indexer.get_max_height", return_value=5),
-        patch("src.indexer._get_chain_height", return_value=10),
-        patch("src.indexer.fetch_chunk", return_value=mock_results) as mock_fetch,
-        patch("src.indexer.upsert_batch") as mock_upsert,
-    ):
-        async with aiohttp.ClientSession() as session:
-            await backfill(session, pool, config, shutdown)
-
-    mock_fetch.assert_called_once()
-    mock_upsert.assert_called_once()
-
-
-@pytest.mark.asyncio
-async def test_backfill_respects_shutdown():
-    """backfill stops when shutdown_event is set."""
-    config = _make_config(chunk_size=2)
-    pool = AsyncMock()
+async def test_fetch_until_date_respects_shutdown():
+    """Stops fetching when shutdown_event is set."""
     shutdown = asyncio.Event()
     shutdown.set()
 
-    with (
-        patch("src.indexer.get_max_height", return_value=0),
-        patch("src.indexer._get_chain_height", return_value=100),
-        patch("src.indexer.fetch_chunk") as mock_fetch,
-    ):
-        async with aiohttp.ClientSession() as session:
-            await backfill(session, pool, config, shutdown)
+    with aioresponses() as m:
+        m.get(
+            f"{NODE}/blockchain/indexedHeight",
+            payload={"indexedHeight": 100},
+        )
+        with patch("src.indexer.fetch_chunk") as mock_fetch:
+            async with aiohttp.ClientSession() as session:
+                results = await _fetch_until_date(
+                    session=session,
+                    node_url=NODE,
+                    start_height=1,
+                    max_price_date=date(2030, 1, 1),
+                    chunk_size=10,
+                    max_concurrent=5,
+                    shutdown_event=shutdown,
+                )
 
     mock_fetch.assert_not_called()
+    assert results == []
+
+
+# ---------------------------------------------------------------------------
+# run_backfill
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_run_backfill_no_bootstrap():
+    """Backfill starts from config.start_height when no bootstrap data."""
+    config = _make_config(start_height=1)
+    shutdown = asyncio.Event()
+
+    mock_results = [
+        HeightData(height=1, timestamp=1561978800000, cbc=100, cbd=10, cbs=90),
+    ]
+
+    with patch("src.indexer.get_max_height", return_value=None), patch(
+        "src.indexer._fetch_until_date", return_value=mock_results
+    ) as mock_fetch:
+        async with aiohttp.ClientSession() as session:
+            results = await run_backfill(
+                session=session,
+                config=config,
+                bootstrap_data=[],
+                price_map={},
+                max_price_date=date(2025, 1, 1),
+                shutdown_event=shutdown,
+            )
+
+    mock_fetch.assert_called_once()
+    assert len(results) == 1
+    assert results[0].height == 1
+
+
+@pytest.mark.asyncio
+async def test_run_backfill_with_bootstrap():
+    """Backfill resumes from max bootstrap height."""
+    config = _make_config(start_height=1)
+    shutdown = asyncio.Event()
+
+    bootstrap = [
+        HeightData(height=1, timestamp=1561978800000, cbc=100, cbd=10, cbs=90),
+    ]
+
+    new_data = [
+        HeightData(height=2, timestamp=1562065200000, cbc=100, cbd=10, cbs=90),
+    ]
+
+    with patch("src.indexer.get_max_height", return_value=1), patch(
+        "src.indexer._fetch_until_date", return_value=new_data
+    ) as mock_fetch:
+        async with aiohttp.ClientSession() as session:
+            results = await run_backfill(
+                session=session,
+                config=config,
+                bootstrap_data=bootstrap,
+                price_map={},
+                max_price_date=date(2025, 1, 1),
+                shutdown_event=shutdown,
+            )
+
+    assert mock_fetch.call_args[1]["start_height"] == 2
+    assert len(results) == 2
+    assert results[0].height == 1
+    assert results[1].height == 2
