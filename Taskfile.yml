@@ -39,3 +39,8 @@ tasks:
     deps: [install]
     cmds:
       - pixi run test
+
+  status:
+    desc: Check indexer sync status
+    cmds:
+      - pixi run python -m src.status
