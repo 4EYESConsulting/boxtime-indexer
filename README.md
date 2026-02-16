@@ -12,12 +12,7 @@ cd boxtime-indexer
 cp .env.example .env
 ```
 
-Create the input folder and add the price CSV (see [Price Data](#price-data) below):
-
-```bash
-mkdir -p input output
-# Place erg_prices.csv in the input folder
-```
+Add the price CSV (see [Price Data](#price-data) below) to `input/erg_prices.csv`.
 
 Run the indexer:
 
@@ -90,9 +85,17 @@ All cointime values are in **nanoERGs** (1 ERG = 1,000,000,000 nanoERG).
 Docker services:
 
 - **node** *(optional, `local-node` profile)* — Ergo full node (`ergoplatform/ergo`) with `extraIndex = true`. Only needed if you don't have your own node.
-- **indexer** — Python async service that fetches data from the node and writes to the output CSV.
+- **indexer** — Python async service that fetches data from the node and writes to CSV files.
 
 The Ergo node (local or external) must be v6.0.1+ with `extraIndex = true` for the indexed block API.
+
+Data flow:
+1. Wait for Ergo node to sync
+2. Load price data from CSV
+3. Load bootstrap data if available (previous output)
+4. Backfill from resume point until block date exceeds max price date
+5. Merge with prices and write output CSV
+6. Exit
 
 ### How it works
 
@@ -106,15 +109,6 @@ CBD excludes the **emission contract box**, which carries the unissued supply an
 
 CBS = CBC − CBD.
 
-**Startup sequence:**
-
-1. Wait for the Ergo node to be synced (checks `fullHeight` vs `indexedHeight`)
-2. Load price data from CSV
-3. Load bootstrap data if available
-4. Backfill from resume point until block date exceeds max price date
-5. Merge data with prices and write output CSV
-6. Exit
-
 ## Development
 
 Requires [pixi](https://pixi.sh) and (optionally) [Task](https://taskfile.dev). A `Taskfile.yml` provides shortcuts for common operations:
@@ -127,6 +121,7 @@ Requires [pixi](https://pixi.sh) and (optionally) [Task](https://taskfile.dev). 
 | `task clean` | Remove all containers, images, and volumes |
 | `task install` | Install Python dependencies with pixi |
 | `task test` | Run the test suite |
+| `task status` | Check indexer sync status |
 
 ## License
 
