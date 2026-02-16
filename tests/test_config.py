@@ -19,7 +19,6 @@ def test_load_config_defaults():
             "CSV_OUTPUT_PATH",
             "CHUNK_SIZE",
             "MAX_CONCURRENT",
-            "POLL_INTERVAL",
             "START_HEIGHT",
         }
     }
@@ -32,7 +31,6 @@ def test_load_config_defaults():
     assert cfg.csv_output_path == "output/cointime.csv"
     assert cfg.chunk_size == 5000
     assert cfg.max_concurrent == 50
-    assert cfg.poll_interval == 60
     assert cfg.start_height == 1
 
 
@@ -45,7 +43,6 @@ def test_load_config_from_env():
         "CSV_OUTPUT_PATH": "custom/output.csv",
         "CHUNK_SIZE": "100",
         "MAX_CONCURRENT": "10",
-        "POLL_INTERVAL": "30",
         "START_HEIGHT": "500",
     }
     with patch.dict(os.environ, env, clear=True):
@@ -57,7 +54,6 @@ def test_load_config_from_env():
     assert cfg.csv_output_path == "custom/output.csv"
     assert cfg.chunk_size == 100
     assert cfg.max_concurrent == 10
-    assert cfg.poll_interval == 30
     assert cfg.start_height == 500
 
 
@@ -70,7 +66,6 @@ def test_config_is_frozen():
         csv_output_path="o.csv",
         chunk_size=1,
         max_concurrent=1,
-        poll_interval=1,
         start_height=1,
     )
     try:

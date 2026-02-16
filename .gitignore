@@ -12,6 +12,10 @@ pixi.lock
 # Environment
 .env
 
+# Data directories
+input/
+output/
+
 # IDE
 .vscode/
 .idea/

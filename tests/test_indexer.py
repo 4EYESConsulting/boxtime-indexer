@@ -23,7 +23,6 @@ def _make_config(**overrides) -> Config:
         csv_output_path="output/cointime.csv",
         chunk_size=100,
         max_concurrent=5,
-        poll_interval=10,
         start_height=1,
     )
     defaults.update(overrides)
