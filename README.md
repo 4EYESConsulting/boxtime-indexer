@@ -27,7 +27,7 @@ The indexer will backfill all blocks up to the last date in the price CSV, then 
 The indexer requires a CSV file with ERG/USD price data. This file must be downloaded manually from CoinGecko:
 
 1. Go to [CoinGecko Ergo Price History](https://www.coingecko.com/en/coins/ergo/historical_data)
-2. Select your date range (start: 2019-10-01, end: desired end date)
+2. Select your date range (start: 2019-07-01, end: desired end date)
 3. Click the **.csv** button to download
 4. Save the file as `input/erg_prices.csv`
 
