@@ -12,6 +12,15 @@ pixi.lock
 # Environment
 .env
 
+# Data directories
+input/
+output/
+
+# Artifact files (from accidental command errors)
+=max_price_date
+=1,
+=0.30,
+
 # IDE
 .vscode/
 .idea/
