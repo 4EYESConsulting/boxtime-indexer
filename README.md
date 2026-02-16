@@ -12,7 +12,7 @@ cd boxtime-indexer
 cp .env.example .env
 ```
 
-Add the price CSV (see [Price Data](#price-data) below) to `input/erg_prices.csv`.
+A default `input/erg_prices.csv` is already included in this repository (see [Price Data](#price-data) below). Replace it with a freshly downloaded file when you need newer price coverage.
 
 Run the indexer:
 
@@ -24,7 +24,7 @@ The indexer will backfill all blocks up to the last date in the price CSV, then 
 
 ## Price Data
 
-The indexer requires a CSV file with ERG/USD price data. This file must be downloaded manually from CoinGecko:
+The indexer requires a CSV file with ERG/USD price data. A default `input/erg_prices.csv` is included in this repository; to refresh or extend price coverage, download an updated file from CoinGecko:
 
 1. Go to [CoinGecko Ergo Price History](https://www.coingecko.com/en/coins/ergo/historical_data)
 2. Select your date range (start: 2019-07-01, end: desired end date)
