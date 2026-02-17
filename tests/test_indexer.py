@@ -155,7 +155,7 @@ async def test_fetch_until_date_respects_shutdown():
 
 @pytest.mark.asyncio
 async def test_run_backfill_no_bootstrap():
-    """Backfill starts from config.start_height when no bootstrap data."""
+    """Backfill does not synthesize genesis row when start_height > 0."""
     config = _make_config(start_height=1)
     shutdown = asyncio.Event()
 
@@ -212,3 +212,118 @@ async def test_run_backfill_with_bootstrap():
     assert len(results) == 2
     assert results[0].height == 1
     assert results[1].height == 2
+
+
+@pytest.mark.asyncio
+async def test_run_backfill_clamps_start_height_to_one():
+    """Backfill clamps effective fetch start to 1 when configured start is 0 and synthesizes genesis row."""
+    config = _make_config(start_height=0)
+    shutdown = asyncio.Event()
+
+    with patch("src.indexer.get_max_height", return_value=None), patch(
+        "src.indexer._fetch_until_date", return_value=[]
+    ) as mock_fetch:
+        async with aiohttp.ClientSession() as session:
+            results = await run_backfill(
+                session=session,
+                config=config,
+                bootstrap_data=[],
+                price_map={},
+                max_price_date=date(2025, 1, 1),
+                shutdown_event=shutdown,
+            )
+
+    assert mock_fetch.call_args[1]["start_height"] == 1
+    assert len(results) == 1
+    assert results[0].height == 0
+    assert results[0].cbc == 0
+    assert results[0].cbd == 0
+    assert results[0].cbs == 0
+
+
+@pytest.mark.asyncio
+async def test_run_backfill_does_not_duplicate_existing_genesis_row():
+    """Backfill preserves existing height-0 bootstrap row without duplication."""
+    config = _make_config(start_height=1)
+    shutdown = asyncio.Event()
+
+    bootstrap = [
+        HeightData(height=0, timestamp=1561978800000, cbc=0, cbd=0, cbs=0),
+        HeightData(height=1, timestamp=1561978800000, cbc=100, cbd=10, cbs=90),
+    ]
+    new_data = [
+        HeightData(height=2, timestamp=1562065200000, cbc=100, cbd=10, cbs=90),
+    ]
+
+    with patch("src.indexer.get_max_height", return_value=1), patch(
+        "src.indexer._fetch_until_date", return_value=new_data
+    ):
+        async with aiohttp.ClientSession() as session:
+            results = await run_backfill(
+                session=session,
+                config=config,
+                bootstrap_data=bootstrap,
+                price_map={},
+                max_price_date=date(2025, 1, 1),
+                shutdown_event=shutdown,
+            )
+
+    assert [r.height for r in results] == [0, 1, 2]
+    assert len([r for r in results if r.height == 0]) == 1
+
+
+@pytest.mark.asyncio
+async def test_run_backfill_preserves_bootstrap_genesis_when_start_height_gt_zero():
+    """Backfill keeps bootstrap genesis row even when configured start_height is > 0."""
+    config = _make_config(start_height=100)
+    shutdown = asyncio.Event()
+
+    bootstrap = [
+        HeightData(height=0, timestamp=1561978800000, cbc=0, cbd=0, cbs=0),
+        HeightData(height=1, timestamp=1561978800000, cbc=100, cbd=10, cbs=90),
+    ]
+
+    with patch("src.indexer.get_max_height", return_value=1), patch(
+        "src.indexer._fetch_until_date", return_value=[]
+    ) as mock_fetch:
+        async with aiohttp.ClientSession() as session:
+            results = await run_backfill(
+                session=session,
+                config=config,
+                bootstrap_data=bootstrap,
+                price_map={},
+                max_price_date=date(2025, 1, 1),
+                shutdown_event=shutdown,
+            )
+
+    assert mock_fetch.call_args[1]["start_height"] == 2
+    assert [r.height for r in results] == [0, 1]
+
+
+@pytest.mark.asyncio
+async def test_run_backfill_start_height_zero_with_existing_bootstrap_genesis():
+    """Backfill with start_height=0 and bootstrap genesis keeps a single height-0 row."""
+    config = _make_config(start_height=0)
+    shutdown = asyncio.Event()
+
+    bootstrap = [
+        HeightData(height=0, timestamp=1561978800000, cbc=0, cbd=0, cbs=0),
+        HeightData(height=1, timestamp=1561978800000, cbc=100, cbd=10, cbs=90),
+    ]
+
+    with patch("src.indexer.get_max_height", return_value=1), patch(
+        "src.indexer._fetch_until_date", return_value=[]
+    ) as mock_fetch:
+        async with aiohttp.ClientSession() as session:
+            results = await run_backfill(
+                session=session,
+                config=config,
+                bootstrap_data=bootstrap,
+                price_map={},
+                max_price_date=date(2025, 1, 1),
+                shutdown_event=shutdown,
+            )
+
+    assert mock_fetch.call_args[1]["start_height"] == 2
+    assert [r.height for r in results] == [0, 1]
+    assert len([r for r in results if r.height == 0]) == 1

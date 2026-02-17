@@ -68,12 +68,15 @@ All settings are environment variables with sensible defaults. Edit `.env` to cu
 | `CSV_OUTPUT_PATH` | `output/cointime.csv` | Path for output CSV |
 | `CHUNK_SIZE` | `5000` | Heights per batch during backfill |
 | `MAX_CONCURRENT` | `50` | Maximum concurrent requests to the node |
-| `START_HEIGHT` | `1` | Height to start from if no bootstrap data |
+| `START_HEIGHT` | `1` | Requested start height if no bootstrap data (network fetch is clamped to `>= 1`) |
+
+When `START_HEIGHT=0`, output includes a synthetic height-0 genesis placeholder row (`cbc=0`, `cbd=0`, `cbs=0`). If bootstrap data already contains height 0, it is preserved without adding a duplicate row.
 
 ## Output CSV Format
 
 ```csv
 blockheight,blockheight_timestamp,blockheight_date,coinblocks_created,coinblocks_destroyed,coinblocks_stored,price_date,price_close
+0,1561978800000,2019-07-01,0,0,0,,
 1,1561978800000,2019-07-01,0,0,0,2019-07-01,0.50
 ...
 ```
