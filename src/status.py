@@ -74,14 +74,9 @@ def main():
     if max_synced == 0:
         print("No data found. Run the indexer to start syncing.")
         sys.exit(0)
-
-    bootstrap_date_range = get_date_range(bootstrap_rows)
-    output_date_range = get_date_range(output_rows)
-
-    min_date = bootstrap_date_range[0] if bootstrap_date_range[0] != "N/A" else output_date_range[0]
-    max_date = output_date_range[1] if output_date_range[1] != "N/A" else bootstrap_date_range[1]
-
-    total_rows = len(bootstrap_rows) + len(output_rows)
+    combined_rows = output_rows if output_rows else bootstrap_rows
+    min_date, max_date = get_date_range(combined_rows)
+    total_rows = len(combined_rows)
 
     print(f"Sync Status")
     print(f"=" * 40)

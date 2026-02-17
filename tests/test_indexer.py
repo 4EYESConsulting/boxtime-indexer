@@ -171,7 +171,6 @@ async def test_run_backfill_no_bootstrap():
                 session=session,
                 config=config,
                 bootstrap_data=[],
-                price_map={},
                 max_price_date=date(2025, 1, 1),
                 shutdown_event=shutdown,
             )
@@ -203,7 +202,6 @@ async def test_run_backfill_with_bootstrap():
                 session=session,
                 config=config,
                 bootstrap_data=bootstrap,
-                price_map={},
                 max_price_date=date(2025, 1, 1),
                 shutdown_event=shutdown,
             )
@@ -228,7 +226,6 @@ async def test_run_backfill_clamps_start_height_to_one():
                 session=session,
                 config=config,
                 bootstrap_data=[],
-                price_map={},
                 max_price_date=date(2025, 1, 1),
                 shutdown_event=shutdown,
             )
@@ -263,7 +260,6 @@ async def test_run_backfill_does_not_duplicate_existing_genesis_row():
                 session=session,
                 config=config,
                 bootstrap_data=bootstrap,
-                price_map={},
                 max_price_date=date(2025, 1, 1),
                 shutdown_event=shutdown,
             )
@@ -291,7 +287,6 @@ async def test_run_backfill_preserves_bootstrap_genesis_when_start_height_gt_zer
                 session=session,
                 config=config,
                 bootstrap_data=bootstrap,
-                price_map={},
                 max_price_date=date(2025, 1, 1),
                 shutdown_event=shutdown,
             )
@@ -319,7 +314,6 @@ async def test_run_backfill_start_height_zero_with_existing_bootstrap_genesis():
                 session=session,
                 config=config,
                 bootstrap_data=bootstrap,
-                price_map={},
                 max_price_date=date(2025, 1, 1),
                 shutdown_event=shutdown,
             )

@@ -3,7 +3,7 @@
 import asyncio
 import logging
 from datetime import date as date_type
-from typing import Dict, List
+from typing import List
 
 import aiohttp
 
@@ -112,7 +112,6 @@ async def run_backfill(
     session: aiohttp.ClientSession,
     config: Config,
     bootstrap_data: List[HeightData],
-    price_map: Dict[date_type, float],
     max_price_date: date_type,
     shutdown_event: asyncio.Event,
 ) -> List[HeightData]:
