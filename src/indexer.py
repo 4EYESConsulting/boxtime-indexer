@@ -12,6 +12,25 @@ from src.csv_writer import get_max_height
 from src.fetcher import HeightData, fetch_chunk, _get_json
 
 logger = logging.getLogger(__name__)
+_GENESIS_TIMESTAMP = 1561978800000
+
+
+def _make_genesis_row() -> HeightData:
+    """Build a synthetic genesis placeholder row for height 0."""
+    return HeightData(
+        height=0,
+        timestamp=_GENESIS_TIMESTAMP,
+        cbc=0,
+        cbd=0,
+        cbs=0,
+    )
+
+
+def _ensure_genesis_row(data: List[HeightData]) -> List[HeightData]:
+    """Ensure output data contains a height-0 row exactly once by insertion."""
+    if any(d.height == 0 for d in data):
+        return data
+    return [_make_genesis_row(), *data]
 
 
 async def _get_chain_height(session: aiohttp.ClientSession, node_url: str) -> int:
@@ -100,25 +119,26 @@ async def run_backfill(
     """Run the backfill process and return all data for output."""
     max_bootstrap_height = get_max_height(bootstrap_data)
     start = (max_bootstrap_height + 1) if max_bootstrap_height is not None else config.start_height
+    fetch_start = max(start, 1)
 
     logger.info(
-        "Starting backfill: bootstrap max height=%s, start=%d, max_price_date=%s",
+        "Starting backfill: bootstrap max height=%s, start=%d, fetch_start=%d, max_price_date=%s",
         max_bootstrap_height,
         start,
+        fetch_start,
         max_price_date,
     )
 
     new_data = await _fetch_until_date(
         session=session,
         node_url=config.node_url,
-        start_height=start,
+        start_height=fetch_start,
         max_price_date=max_price_date,
         chunk_size=config.chunk_size,
         max_concurrent=config.max_concurrent,
         shutdown_event=shutdown_event,
     )
-
-    all_data = bootstrap_data + new_data
+    all_data = _ensure_genesis_row(bootstrap_data + new_data)
 
     logger.info(
         "Backfill complete: %d bootstrap + %d new = %d total rows",
