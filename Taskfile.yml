@@ -41,9 +41,26 @@ tasks:
       - pixi run test
 
   status:
-    desc: Check indexer sync status (no pixi required)
+    desc: Check indexer sync status (local CSVs, with docker fallback)
+    cmds:
+      - |
+        if [ -f output/cointime.csv ] || [ -f input/cointime.csv ]; then
+          python3 -m src.status
+        elif [ -n "$(docker compose ps -q indexer 2>/dev/null)" ]; then
+          docker compose exec -T indexer pixi run python -m src.status
+        else
+          python3 -m src.status
+        fi
+
+  status:local:
+    desc: Check indexer sync status from local CSV files (no pixi required)
     cmds:
       - python3 -m src.status
+
+  status:docker:
+    desc: Check indexer sync status from running indexer container
+    cmds:
+      - docker compose exec -T indexer pixi run python -m src.status
 
   status:pixi:
     desc: Check indexer sync status via pixi environment
