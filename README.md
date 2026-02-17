@@ -119,7 +119,7 @@ CBS = CBC − CBD.
 
 ## Development
 
-Requires [pixi](https://pixi.sh) and (optionally) [Task](https://taskfile.dev). A `Taskfile.yml` provides shortcuts for common operations:
+Requires [pixi](https://pixi.sh) for install/test workflows and (optionally) [Task](https://taskfile.dev). Status checks can run without pixi via local `python3`. A `Taskfile.yml` provides shortcuts for common operations:
 
 | Task | Description |
 |---|---|
