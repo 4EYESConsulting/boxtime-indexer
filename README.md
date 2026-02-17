@@ -31,7 +31,12 @@ The indexer requires a CSV file with ERG/USD price data. A default `input/erg_pr
 3. Click the **.csv** button to download
 4. Save the file as `input/erg_prices.csv`
 
-The CSV should have columns: `Date` and `Close` (as provided by CoinGecko's export).
+The CSV should have columns from CoinGecko's historical export such as:
+
+- `snapped_at`
+- `price`
+
+Additional columns like `market_cap` and `total_volume` are ignored.
 
 ### Updating Price Data
 

@@ -21,11 +21,11 @@ async def _wait_for_node(session: aiohttp.ClientSession, node_url: str) -> None:
     while True:
         try:
             info = await _get_json(session, f"{node_url}/info")
-            if info and info.get("fullHeight"):
+            if info and info.get("fullHeight") is not None:
                 indexed = await _get_json(
                     session, f"{node_url}/blockchain/indexedHeight"
                 )
-                if indexed and indexed.get("indexedHeight"):
+                if indexed and indexed.get("indexedHeight") is not None:
                     indexed_height = indexed["indexedHeight"]
                     full_height = info["fullHeight"]
                     logger.info(
@@ -73,7 +73,6 @@ async def run() -> None:
             session=session,
             config=config,
             bootstrap_data=bootstrap_data,
-            price_map=price_map,
             max_price_date=max_price_date,
             shutdown_event=shutdown_event,
         )

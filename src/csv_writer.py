@@ -22,12 +22,27 @@ CSV_FIELDNAMES = [
     "price_close",
 ]
 
+def _resolve_price_columns(fieldnames: list[str] | None) -> tuple[str, str]:
+    if fieldnames is None:
+        raise ValueError("Price CSV is missing a header row")
+
+    columns = set(fieldnames)
+    if {"snapped_at", "price"}.issubset(columns):
+        return ("snapped_at", "price")
+    if {"Date", "Close"}.issubset(columns):
+        return ("Date", "Close")
+
+    raise ValueError(
+        "Unsupported price CSV columns. Expected snapped_at/price "
+        f"or Date/Close, got: {', '.join(fieldnames)}"
+    )
+
 
 def load_prices(csv_path: str) -> tuple[Dict[date_type, float], Optional[date_type]]:
     """Load price data from CSV file.
-
-    Expected CSV format (CoinGecko export):
-        Date,Close
+    Expected CSV format:
+        snapped_at,price,market_cap,total_volume
+        2019-07-02 00:00:00 UTC,3.72,3011057.31,234258.35
         2019-07-01,0.50
         ...
 
@@ -41,14 +56,16 @@ def load_prices(csv_path: str) -> tuple[Dict[date_type, float], Optional[date_ty
     price_map: Dict[date_type, float] = {}
     with open(path, newline="", encoding="utf-8") as f:
         reader = csv.DictReader(f)
+        date_col, close_col = _resolve_price_columns(reader.fieldnames)
         for row in reader:
-            date_str = row["Date"].strip()
-            close_str = row["Close"].strip()
+            date_str = (row.get(date_col) or "").strip()
+            close_str = (row.get(close_col) or "").strip()
             try:
-                dt = datetime.datetime.strptime(date_str, "%Y-%m-%d").date()
+                date_part = date_str.split(" ", 1)[0]
+                dt = datetime.datetime.strptime(date_part, "%Y-%m-%d").date()
                 price = float(close_str)
                 price_map[dt] = price
-            except (ValueError, KeyError) as e:
+            except ValueError as e:
                 logger.warning("Skipping invalid row: %s - %s", row, e)
 
     max_date = max(price_map.keys()) if price_map else None

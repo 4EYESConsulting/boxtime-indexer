@@ -28,6 +28,17 @@ async def test_wait_for_node_ready_immediately():
         async with aiohttp.ClientSession() as session:
             # Should return without looping
             await _wait_for_node(session, NODE)
+@pytest.mark.asyncio
+async def test_wait_for_node_zero_heights_ready():
+    """Returns when node reports fullHeight/indexedHeight as 0."""
+    with aioresponses() as m:
+        m.get(f"{NODE}/info", payload={"fullHeight": 0})
+        m.get(
+            f"{NODE}/blockchain/indexedHeight",
+            payload={"indexedHeight": 0, "fullHeight": 0},
+        )
+        async with aiohttp.ClientSession() as session:
+            await _wait_for_node(session, NODE)
 
 
 @pytest.mark.asyncio

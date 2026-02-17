@@ -43,6 +43,40 @@ class TestLoadPrices:
             assert price_map[date(2019, 7, 3)] == 2.50
         finally:
             os.unlink(temp_path)
+    def test_load_prices_coingecko_snapped_at_schema(self):
+        """Successfully loads price data from CoinGecko snapped_at/price export format."""
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".csv", delete=False
+        ) as f:
+            writer = csv.writer(f)
+            writer.writerow(["snapped_at", "price", "market_cap", "total_volume"])
+            writer.writerow(["2019-07-01 00:00:00 UTC", "1.50", "100", "10"])
+            writer.writerow(["2019-07-02 00:00:00 UTC", "2.00", "200", "20"])
+            temp_path = f.name
+
+        try:
+            price_map, max_date = load_prices(temp_path)
+            assert max_date == date(2019, 7, 2)
+            assert price_map[date(2019, 7, 1)] == 1.50
+            assert price_map[date(2019, 7, 2)] == 2.00
+        finally:
+            os.unlink(temp_path)
+
+    def test_load_prices_unsupported_columns(self):
+        """Raises ValueError when the price CSV has unsupported columns."""
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".csv", delete=False
+        ) as f:
+            writer = csv.writer(f)
+            writer.writerow(["foo", "bar"])
+            writer.writerow(["x", "y"])
+            temp_path = f.name
+
+        try:
+            with pytest.raises(ValueError, match="Unsupported price CSV columns"):
+                load_prices(temp_path)
+        finally:
+            os.unlink(temp_path)
 
     def test_load_prices_file_not_found(self):
         """Raises FileNotFoundError when CSV doesn't exist."""
