@@ -41,6 +41,11 @@ tasks:
       - pixi run test
 
   status:
-    desc: Check indexer sync status
+    desc: Check indexer sync status (no pixi required)
+    cmds:
+      - python3 -m src.status
+
+  status:pixi:
+    desc: Check indexer sync status via pixi environment
     cmds:
       - pixi run python -m src.status

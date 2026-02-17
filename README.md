@@ -129,7 +129,8 @@ Requires [pixi](https://pixi.sh) and (optionally) [Task](https://taskfile.dev). 
 | `task clean` | Remove all containers, images, and volumes |
 | `task install` | Install Python dependencies with pixi |
 | `task test` | Run the test suite |
-| `task status` | Check indexer sync status |
+| `task status` | Check indexer sync status (uses local `python3`, no pixi required) |
+| `task status:pixi` | Check indexer sync status via pixi |
 
 ## License
 
