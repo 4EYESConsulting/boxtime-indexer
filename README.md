@@ -4,6 +4,12 @@ Cointime Economics ETL/indexer for the [Ergo](https://ergoplatform.org) blockcha
 
 Companion to the [boxtime](https://github.com/4EYESConsulting/boxtime) library.
 
+## Requirements
+
+- [Docker](https://docs.docker.com/get-docker/) and [Docker Compose](https://docs.docker.com/compose/install/) — runs the indexer and (optionally) an Ergo node
+- [pixi](https://pixi.sh) — Python dependency management (needed for `install`, `test`, and local development)
+- [Task](https://taskfile.dev) *(optional)* — provides `Taskfile.yml` shortcuts (`task up`, `task test`, etc.)
+
 ## Quickstart
 
 ```bash
