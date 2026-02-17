@@ -14,8 +14,6 @@ from src.indexer import run_backfill
 
 logger = logging.getLogger(__name__)
 
-_GENESIS_TIMESTAMP = 1561978800000
-
 
 async def _wait_for_node(session: aiohttp.ClientSession, node_url: str) -> None:
     """Block until the Ergo node is reachable and has an active extra index."""

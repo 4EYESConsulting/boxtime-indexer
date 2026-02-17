@@ -27,7 +27,7 @@ def _make_genesis_row() -> HeightData:
 
 
 def _ensure_genesis_row(data: List[HeightData]) -> List[HeightData]:
-    """Ensure output data contains a height-0 row exactly once by insertion."""
+    """Ensure output data contains a height-0 row exactly once by prepending."""
     if any(d.height == 0 for d in data):
         return data
     return [_make_genesis_row(), *data]
@@ -138,10 +138,12 @@ async def run_backfill(
         max_concurrent=config.max_concurrent,
         shutdown_event=shutdown_event,
     )
-    all_data = _ensure_genesis_row(bootstrap_data + new_data)
+    all_data = bootstrap_data + new_data
+    if config.start_height == 0:
+        all_data = _ensure_genesis_row(all_data)
 
     logger.info(
-        "Backfill complete: %d bootstrap + %d new = %d total rows",
+        "Backfill complete: bootstrap=%d, new=%d, total=%d",
         len(bootstrap_data),
         len(new_data),
         len(all_data),
