@@ -298,3 +298,32 @@ async def test_run_backfill_preserves_bootstrap_genesis_when_start_height_gt_zer
 
     assert mock_fetch.call_args[1]["start_height"] == 2
     assert [r.height for r in results] == [0, 1]
+
+
+@pytest.mark.asyncio
+async def test_run_backfill_start_height_zero_with_existing_bootstrap_genesis():
+    """Backfill with start_height=0 and bootstrap genesis keeps a single height-0 row."""
+    config = _make_config(start_height=0)
+    shutdown = asyncio.Event()
+
+    bootstrap = [
+        HeightData(height=0, timestamp=1561978800000, cbc=0, cbd=0, cbs=0),
+        HeightData(height=1, timestamp=1561978800000, cbc=100, cbd=10, cbs=90),
+    ]
+
+    with patch("src.indexer.get_max_height", return_value=1), patch(
+        "src.indexer._fetch_until_date", return_value=[]
+    ) as mock_fetch:
+        async with aiohttp.ClientSession() as session:
+            results = await run_backfill(
+                session=session,
+                config=config,
+                bootstrap_data=bootstrap,
+                price_map={},
+                max_price_date=date(2025, 1, 1),
+                shutdown_event=shutdown,
+            )
+
+    assert mock_fetch.call_args[1]["start_height"] == 2
+    assert [r.height for r in results] == [0, 1]
+    assert len([r for r in results if r.height == 0]) == 1
