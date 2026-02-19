@@ -113,6 +113,9 @@ def load_bootstrap(csv_path: str) -> List[HeightData]:
             except (ValueError, KeyError) as e:
                 logger.warning("Skipping invalid bootstrap row: %s - %s", row, e)
 
+    # Deduplicate to handle partial chunks from crashes
+    rows = deduplicate_by_height(rows)
+    
     max_height = rows[-1].height if rows else None
     logger.info(
         "Loaded %d bootstrap records, max height: %s", len(rows), max_height
@@ -147,6 +150,27 @@ def merge_with_prices(
     return data
 
 
+def _height_data_to_row(d: HeightData) -> dict:
+    """Convert HeightData to CSV row dict."""
+    return {
+        "blockheight": d.height,
+        "blockheight_timestamp": d.timestamp,
+        "blockheight_date": (
+            d.block_date.isoformat() if hasattr(d, "block_date") and d.block_date else ""
+        ),
+        "coinblocks_created": d.cbc,
+        "coinblocks_destroyed": d.cbd,
+        "coinblocks_stored": d.cbs,
+        "price_date": (
+            d.price_date.isoformat()
+            if hasattr(d, "price_date") and d.price_date else ""
+        ),
+        "price_close": (
+            d.price_close if hasattr(d, "price_close") and d.price_close is not None else ""
+        ),
+    }
+
+
 def write_output(csv_path: str, data: List[HeightData]) -> None:
     """Write complete output CSV.
 
@@ -161,23 +185,79 @@ def write_output(csv_path: str, data: List[HeightData]) -> None:
         writer.writeheader()
 
         for d in data:
-            row = {
-                "blockheight": d.height,
-                "blockheight_timestamp": d.timestamp,
-                "blockheight_date": (
-                    d.block_date.isoformat() if hasattr(d, "block_date") and d.block_date else ""
-                ),
-                "coinblocks_created": d.cbc,
-                "coinblocks_destroyed": d.cbd,
-                "coinblocks_stored": d.cbs,
-                "price_date": (
-                    d.price_date.isoformat()
-                    if hasattr(d, "price_date") and d.price_date else ""
-                ),
-                "price_close": (
-                    d.price_close if hasattr(d, "price_close") and d.price_close is not None else ""
-                ),
-            }
-            writer.writerow(row)
+            writer.writerow(_height_data_to_row(d))
 
     logger.info("Wrote %d rows to %s", len(data), csv_path)
+
+
+def append_output(csv_path: str, data: List[HeightData]) -> None:
+    """Append data to output CSV.
+
+    Writes header if file doesn't exist or is empty.
+    Data should already have prices merged.
+    """
+    path = Path(csv_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+    file_exists = path.exists()
+    file_empty = file_exists and path.stat().st_size == 0
+
+    mode = "a" if file_exists else "w"
+    write_header = not file_exists or file_empty
+
+    with open(path, mode, newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=CSV_FIELDNAMES)
+        if write_header:
+            writer.writeheader()
+
+        for d in data:
+            writer.writerow(_height_data_to_row(d))
+
+    logger.info("Appended %d rows to %s", len(data), csv_path)
+
+
+def deduplicate_by_height(data: List[HeightData]) -> List[HeightData]:
+    """Remove duplicate heights, keeping the last occurrence.
+
+    This handles partial chunks from crashes where some heights
+    were written before the crash.
+    """
+    if not data:
+        return []
+
+    seen: dict[int, HeightData] = {}
+    for d in data:
+        seen[d.height] = d  # Overwrite duplicates, keeping last
+
+    if len(seen) < len(data):
+        removed = len(data) - len(seen)
+        logger.info("Removed %d duplicate heights during deduplication", removed)
+
+    return list(seen.values())
+
+
+def get_last_height(csv_path: str) -> Optional[int]:
+    """Get the maximum height from existing CSV file.
+
+    Reads all rows to find the maximum height value.
+    """
+    path = Path(csv_path)
+    if not path.exists():
+        return None
+
+    max_height: Optional[int] = None
+    try:
+        with open(path, newline="", encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                try:
+                    height = int(row["blockheight"])
+                    if max_height is None or height > max_height:
+                        max_height = height
+                except (ValueError, KeyError):
+                    continue
+    except Exception as e:
+        logger.warning("Error reading CSV for last height: %s", e)
+        return None
+
+    return max_height
