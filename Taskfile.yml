@@ -49,7 +49,9 @@ tasks:
         elif [ -n "$(docker compose ps -q indexer 2>/dev/null)" ]; then
           docker compose exec -T indexer pixi run python -m src.status
         else
-          python3 -m src.status
+          echo "Error: No local CSV files found and indexer container is not running."
+          echo "Run the indexer first: task up"
+          exit 1
         fi
 
   status:local:
