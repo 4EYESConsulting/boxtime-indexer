@@ -11,6 +11,9 @@ import pytest
 
 from src.csv_writer import (
     CSV_FIELDNAMES,
+    append_output,
+    deduplicate_by_height,
+    get_last_height,
     get_max_height,
     load_bootstrap,
     load_prices,
@@ -335,3 +338,128 @@ class TestWriteOutput:
                 rows = list(reader)
 
             assert len(rows) == 0
+
+
+class TestAppendOutput:
+    """Tests for append_output()."""
+
+    def test_append_output_creates_file_with_header(self):
+        """Creates new file with header when file doesn't exist."""
+        data = [
+            HeightData(height=1, timestamp=1561978800000, cbc=100, cbd=10, cbs=90),
+        ]
+        data[0].block_date = date(2019, 7, 1)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output_path = Path(tmpdir) / "output.csv"
+            append_output(str(output_path), data)
+
+            assert output_path.exists()
+            with open(output_path, newline="") as f:
+                reader = csv.DictReader(f)
+                rows = list(reader)
+
+            assert len(rows) == 1
+            assert rows[0]["blockheight"] == "1"
+
+    def test_append_output_appends_to_existing_file(self):
+        """Appends data to existing file without rewriting header."""
+        data1 = [
+            HeightData(height=1, timestamp=1561978800000, cbc=100, cbd=10, cbs=90),
+        ]
+        data1[0].block_date = date(2019, 7, 1)
+
+        data2 = [
+            HeightData(height=2, timestamp=1562065200000, cbc=200, cbd=20, cbs=180),
+        ]
+        data2[0].block_date = date(2019, 7, 2)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output_path = Path(tmpdir) / "output.csv"
+            
+            # First append
+            append_output(str(output_path), data1)
+            # Second append
+            append_output(str(output_path), data2)
+
+            with open(output_path, newline="") as f:
+                reader = csv.DictReader(f)
+                rows = list(reader)
+
+            assert len(rows) == 2
+            assert rows[0]["blockheight"] == "1"
+            assert rows[1]["blockheight"] == "2"
+
+
+class TestDeduplicateByHeight:
+    """Tests for deduplicate_by_height()."""
+
+    def test_deduplicate_keeps_last_occurrence(self):
+        """Keeps the last occurrence of each height."""
+        data = [
+            HeightData(height=1, timestamp=1000, cbc=100, cbd=10, cbs=90),
+            HeightData(height=2, timestamp=2000, cbc=200, cbd=20, cbs=180),
+            HeightData(height=1, timestamp=1500, cbc=150, cbd=15, cbs=135),  # Duplicate
+        ]
+
+        result = deduplicate_by_height(data)
+
+        assert len(result) == 2
+        heights = [d.height for d in result]
+        assert sorted(heights) == [1, 2]
+        # Check that the last occurrence was kept (timestamp 1500, not 1000)
+        height_1 = next(d for d in result if d.height == 1)
+        assert height_1.timestamp == 1500
+
+    def test_deduplicate_empty_list(self):
+        """Returns empty list for empty input."""
+        result = deduplicate_by_height([])
+        assert result == []
+
+    def test_deduplicate_no_duplicates(self):
+        """Returns same data when no duplicates."""
+        data = [
+            HeightData(height=1, timestamp=1000, cbc=100, cbd=10, cbs=90),
+            HeightData(height=2, timestamp=2000, cbc=200, cbd=20, cbs=180),
+        ]
+
+        result = deduplicate_by_height(data)
+
+        assert len(result) == 2
+        assert result[0].height == 1
+        assert result[1].height == 2
+
+
+class TestGetLastHeight:
+    """Tests for get_last_height()."""
+
+    def test_get_last_height_from_existing_file(self):
+        """Returns max height from existing CSV."""
+        data = [
+            HeightData(height=1, timestamp=1561978800000, cbc=100, cbd=10, cbs=90),
+            HeightData(height=5, timestamp=1562065200000, cbc=200, cbd=20, cbs=180),
+            HeightData(height=3, timestamp=1562151600000, cbc=300, cbd=30, cbs=270),
+        ]
+        for d in data:
+            d.block_date = date(2019, 7, 1)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output_path = Path(tmpdir) / "output.csv"
+            write_output(str(output_path), data)
+
+            last_height = get_last_height(str(output_path))
+            assert last_height == 5
+
+    def test_get_last_height_file_not_found(self):
+        """Returns None when file doesn't exist."""
+        last_height = get_last_height("/nonexistent/path.csv")
+        assert last_height is None
+
+    def test_get_last_height_empty_file(self):
+        """Returns None for empty file."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output_path = Path(tmpdir) / "output.csv"
+            write_output(str(output_path), [])
+
+            last_height = get_last_height(str(output_path))
+            assert last_height is None
