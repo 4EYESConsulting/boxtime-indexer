@@ -125,7 +125,14 @@ CBS = CBC − CBD.
 
 ## Development
 
-Requires [pixi](https://pixi.sh) for install/test workflows and (optionally) [Task](https://taskfile.dev). A `Taskfile.yml` provides shortcuts for common operations:
+Requires [pixi](https://pixi.sh) for install/test workflows and status checks. (Optionally) [Task](https://taskfile.dev) is used for task automation. Install pixi first:
+
+```bash
+curl -fsSL https://pixi.sh/install.sh | bash
+# or download from https://pixi.sh
+```
+
+A `Taskfile.yml` provides shortcuts for common operations:
 
 | Task | Description |
 |---|---|

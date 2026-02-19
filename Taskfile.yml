@@ -41,10 +41,10 @@ tasks:
       - pixi run test
 
   status:
-    desc: Check indexer sync status (shows chain height, progress %, and ETA)
+    desc: Check indexer sync status (requires pixi)
     cmds:
       - |
         if [ -f .env ]; then
           export $(grep -v '^#' .env | xargs)
         fi
-        python3 -m src.status --output-csv output/cointime.csv
+        pixi run python -m src.status --output-csv output/cointime.csv
