@@ -9,7 +9,7 @@ import aiohttp
 
 from src.config import Config
 from src.csv_writer import append_output, get_max_height, merge_with_prices
-from src.fetcher import HeightData, fetch_chunk, _get_json
+from src.fetcher import HeightData, fetch_chunk, _get_json, find_height_by_date
 
 logger = logging.getLogger(__name__)
 _GENESIS_TIMESTAMP = 1561978800000
@@ -72,8 +72,7 @@ async def _fetch_and_write_chunks(
     node_url: str,
     csv_output_path: str,
     start_height: int,
-    chain_height: int,
-    max_price_date: date_type,
+    target_height: int,
     chunk_size: int,
     max_concurrent: int,
     shutdown_event: asyncio.Event,
@@ -84,18 +83,17 @@ async def _fetch_and_write_chunks(
     start_time = asyncio.get_event_loop().time()
 
     logger.info(
-        "Backfilling heights %d–%d until block date %s",
+        "Backfilling heights %d–%d",
         start_height,
-        chain_height,
-        max_price_date,
+        target_height,
     )
 
-    for chunk_start in range(start_height, chain_height + 1, chunk_size):
+    for chunk_start in range(start_height, target_height + 1, chunk_size):
         if shutdown_event.is_set():
             logger.info("Shutdown requested, stopping backfill")
             break
 
-        chunk_end = min(chunk_start + chunk_size - 1, chain_height)
+        chunk_end = min(chunk_start + chunk_size - 1, target_height)
         heights = list(range(chunk_start, chunk_end + 1))
 
         results = await fetch_chunk(session, node_url, heights, max_concurrent)
@@ -103,59 +101,40 @@ async def _fetch_and_write_chunks(
         if not results:
             continue
 
-        filtered_results: List[HeightData] = []
-        stop_backfill = False
+        # Merge prices before writing
+        merged_chunk = merge_with_prices(results, price_map)
+        
+        # Write incrementally
+        append_output(csv_output_path, merged_chunk)
+        all_results.extend(merged_chunk)
 
-        for r in results:
-            if r.block_date > max_price_date:
-                logger.info(
-                    "Reached price date limit at height %d (block_date=%s > max_price_date=%s)",
-                    r.height,
-                    r.block_date,
-                    max_price_date,
-                )
-                stop_backfill = True
-                break
-            filtered_results.append(r)
-
-        if filtered_results:
-            # Merge prices before writing
-            merged_chunk = merge_with_prices(filtered_results, price_map)
+        # Calculate progress
+        current_height = results[-1].height
+        progress_pct = (current_height / target_height) * 100
+        remaining = target_height - current_height
+        
+        # Calculate rate and ETA
+        elapsed = asyncio.get_event_loop().time() - start_time
+        if elapsed > 0:
+            blocks_processed = len(all_results)
+            rate = blocks_processed / elapsed
+            eta_seconds = remaining / rate if rate > 0 else 0
+            eta_str = _format_eta(eta_seconds)
             
-            # Write incrementally
-            append_output(csv_output_path, merged_chunk)
-            all_results.extend(merged_chunk)
-
-            # Calculate progress
-            current_height = filtered_results[-1].height
-            progress_pct = (current_height / chain_height) * 100
-            remaining = chain_height - current_height
-            
-            # Calculate rate and ETA
-            elapsed = asyncio.get_event_loop().time() - start_time
-            if elapsed > 0:
-                blocks_processed = len(all_results)
-                rate = blocks_processed / elapsed
-                eta_seconds = remaining / rate if rate > 0 else 0
-                eta_str = _format_eta(eta_seconds)
-                
-                logger.info(
-                    "Progress: %d / %d blocks (%.1f%%, ETA: %s at %.1f blocks/sec)",
-                    current_height,
-                    chain_height,
-                    progress_pct,
-                    eta_str,
-                    rate,
-                )
-            else:
-                logger.info(
-                    "Indexed heights %d–%d",
-                    chunk_start,
-                    filtered_results[-1].height,
-                )
-
-        if stop_backfill:
-            break
+            logger.info(
+                "Progress: %d / %d blocks (%.1f%%, ETA: %s at %.1f blocks/sec)",
+                current_height,
+                target_height,
+                progress_pct,
+                eta_str,
+                rate,
+            )
+        else:
+            logger.info(
+                "Indexed heights %d–%d",
+                chunk_start,
+                results[-1].height,
+            )
 
     return all_results
 
@@ -169,20 +148,27 @@ async def run_backfill(
     price_map: Dict[date_type, float],
 ) -> List[HeightData]:
     """Run the backfill process and return all data for output.
-    
+
     Writes data incrementally to CSV as chunks are processed.
+    End height is determined by the latest date in price data.
     """
     chain_height = await _get_chain_height(session, config.node_url)
-    
+
     max_bootstrap_height = get_max_height(bootstrap_data)
     start = (max_bootstrap_height + 1) if max_bootstrap_height is not None else config.start_height
     fetch_start = max(start, 1)
 
+    # Find target height based on price data availability
+    target_height = await find_height_by_date(
+        session, config.node_url, fetch_start, chain_height, max_price_date
+    )
+
     logger.info(
-        "Starting backfill: bootstrap max height=%s, start=%d, fetch_start=%d, max_price_date=%s",
+        "Starting backfill: bootstrap max height=%s, start=%d, fetch_start=%d, target_height=%d (max_price_date=%s)",
         max_bootstrap_height,
         start,
         fetch_start,
+        target_height,
         max_price_date,
     )
 
@@ -194,8 +180,8 @@ async def run_backfill(
         bootstrap_data = [genesis] + bootstrap_data
 
     # If already up to date, nothing to do
-    if fetch_start > chain_height:
-        logger.info("Already up to date at height %d", chain_height)
+    if fetch_start > target_height:
+        logger.info("Already up to date at target height %d", target_height)
         return bootstrap_data
 
     new_data = await _fetch_and_write_chunks(
@@ -203,8 +189,7 @@ async def run_backfill(
         node_url=config.node_url,
         csv_output_path=config.csv_output_path,
         start_height=fetch_start,
-        chain_height=chain_height,
-        max_price_date=max_price_date,
+        target_height=target_height,
         chunk_size=config.chunk_size,
         max_concurrent=config.max_concurrent,
         shutdown_event=shutdown_event,

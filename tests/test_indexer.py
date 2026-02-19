@@ -120,6 +120,7 @@ async def test_run_backfill_no_bootstrap():
     with aioresponses() as m:
         m.get(f"{NODE}/blockchain/indexedHeight", payload={"indexedHeight": 10})
         with patch("src.indexer.get_max_height", return_value=None), \
+             patch("src.indexer.find_height_by_date", return_value=10), \
              patch("src.indexer._fetch_and_write_chunks", return_value=mock_results) as mock_fetch, \
              patch("src.indexer._has_genesis_row", return_value=False), \
              patch("src.indexer._write_genesis_if_needed"):
@@ -157,6 +158,7 @@ async def test_run_backfill_with_bootstrap():
     with aioresponses() as m:
         m.get(f"{NODE}/blockchain/indexedHeight", payload={"indexedHeight": 10})
         with patch("src.indexer.get_max_height", return_value=1), \
+             patch("src.indexer.find_height_by_date", return_value=10), \
              patch("src.indexer._fetch_and_write_chunks", return_value=new_data) as mock_fetch, \
              patch("src.indexer._has_genesis_row", return_value=False):
             async with aiohttp.ClientSession() as session:
@@ -221,6 +223,7 @@ async def test_run_backfill_with_genesis():
     with aioresponses() as m:
         m.get(f"{NODE}/blockchain/indexedHeight", payload={"indexedHeight": 10})
         with patch("src.indexer.get_max_height", return_value=None), \
+             patch("src.indexer.find_height_by_date", return_value=10), \
              patch("src.indexer._fetch_and_write_chunks", return_value=new_data), \
              patch("src.indexer._has_genesis_row", return_value=False), \
              patch("src.indexer._write_genesis_if_needed") as mock_genesis:
@@ -259,6 +262,7 @@ async def test_run_backfill_does_not_duplicate_genesis():
     with aioresponses() as m:
         m.get(f"{NODE}/blockchain/indexedHeight", payload={"indexedHeight": 10})
         with patch("src.indexer.get_max_height", return_value=0), \
+             patch("src.indexer.find_height_by_date", return_value=10), \
              patch("src.indexer._fetch_and_write_chunks", return_value=new_data), \
              patch("src.indexer._has_genesis_row", return_value=True), \
              patch("src.indexer._write_genesis_if_needed") as mock_genesis:
