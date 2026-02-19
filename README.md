@@ -125,7 +125,7 @@ CBS = CBC − CBD.
 
 ## Development
 
-Requires [pixi](https://pixi.sh) and (optionally) [Task](https://taskfile.dev). A `Taskfile.yml` provides shortcuts for common operations:
+Requires [pixi](https://pixi.sh) for install/test workflows and (optionally) [Task](https://taskfile.dev). Status checks can run without pixi via local `python3`, and the default status task can also fall back to the running Docker indexer container when local CSV files are not present. A `Taskfile.yml` provides shortcuts for common operations:
 
 | Task | Description |
 |---|---|
@@ -135,7 +135,10 @@ Requires [pixi](https://pixi.sh) and (optionally) [Task](https://taskfile.dev). 
 | `task clean` | Remove all containers, images, and volumes |
 | `task install` | Install Python dependencies with pixi |
 | `task test` | Run the test suite |
-| `task status` | Check indexer sync status |
+| `task status` | Check indexer sync status (local CSVs, with docker fallback) |
+| `task status:local` | Check indexer sync status from local CSV files (no pixi required) |
+| `task status:docker` | Check indexer sync status from running indexer container |
+| `task status:pixi` | Check indexer sync status via pixi |
 
 ## License
 
