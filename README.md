@@ -135,7 +135,7 @@ Requires [pixi](https://pixi.sh) for install/test workflows and (optionally) [Ta
 | `task clean` | Remove all containers, images, and volumes |
 | `task install` | Install Python dependencies with pixi |
 | `task test` | Run the test suite |
-| `task status` | Check indexer sync status (shows chain height, progress %, ETA)
+| `task status` | Check indexer sync status (shows chain height, progress %, ETA) |
 
 ## License
 

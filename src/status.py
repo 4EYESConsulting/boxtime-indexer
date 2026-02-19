@@ -7,7 +7,12 @@ import sys
 from pathlib import Path
 from typing import Optional
 
-import aiohttp
+# aiohttp is optional - status works without it for local CSV stats
+try:
+    import aiohttp
+    HAS_AIOHTTP = True
+except ImportError:
+    HAS_AIOHTTP = False
 
 
 def load_output_csv(csv_path: str) -> list[dict]:
@@ -42,6 +47,8 @@ def get_date_range(rows: list[dict]) -> tuple[str, str]:
 
 async def fetch_chain_height(node_url: str) -> Optional[int]:
     """Fetch current indexed height from Ergo node."""
+    if not HAS_AIOHTTP:
+        return None
     try:
         async with aiohttp.ClientSession() as session:
             async with session.get(
