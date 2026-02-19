@@ -2,6 +2,7 @@
 
 import asyncio
 import datetime
+from datetime import date as date_type
 import logging
 from dataclasses import dataclass
 from typing import List, Optional
@@ -186,3 +187,102 @@ async def fetch_chunk(
     ]
     results = await asyncio.gather(*tasks)
     return [r for r in results if r is not None]
+
+
+async def _fetch_block_timestamp(
+    session: aiohttp.ClientSession,
+    node_url: str,
+    height: int,
+) -> Optional[int]:
+    """Fetch just the timestamp for a block height (lighter than full fetch).
+
+    Returns timestamp in milliseconds, or None on error.
+    """
+    header_ids = await _get_json(session, f"{node_url}/blocks/at/{height}")
+    if not header_ids:
+        return None
+    header_id = header_ids[0] if isinstance(header_ids, list) else header_ids
+
+    block = await _get_json(session, f"{node_url}/blockchain/block/byHeaderId/{header_id}")
+    if block is None:
+        return None
+
+    return block["header"]["timestamp"]
+
+
+async def _fetch_block_timestamp_with_retry(
+    session: aiohttp.ClientSession,
+    node_url: str,
+    height: int,
+    max_retries: int = 3,
+) -> Optional[int]:
+    """Fetch block timestamp with retries on failure.
+
+    Returns timestamp in milliseconds, or None if all retries fail.
+    """
+    for attempt in range(max_retries):
+        result = await _fetch_block_timestamp(session, node_url, height)
+        if result is not None:
+            return result
+        if attempt < max_retries - 1:
+            await asyncio.sleep(0.1 * (attempt + 1))
+    return None
+
+
+def _timestamp_to_date(timestamp_ms: int) -> date_type:
+    """Convert millisecond timestamp to date."""
+    return datetime.datetime.fromtimestamp(
+        timestamp_ms / 1000, tz=datetime.timezone.utc
+    ).date()
+
+
+async def find_height_by_date(
+    session: aiohttp.ClientSession,
+    node_url: str,
+    start_height: int,
+    chain_height: int,
+    target_date: date_type,
+) -> int:
+    """Binary search to find the last height where block_date <= target_date.
+
+    Returns the height of the last block with date <= target_date.
+    If all blocks are after target_date, returns start_height - 1.
+    If all blocks are before target_date, returns chain_height.
+    """
+    logger.info(
+        "Binary search: finding height for date %s in range %d-%d",
+        target_date,
+        start_height,
+        chain_height,
+    )
+
+    low = start_height
+    high = chain_height
+    result = start_height - 1  # Default if no blocks are before target_date
+
+    iteration = 0
+    while low <= high:
+        iteration += 1
+        mid = (low + high) // 2
+
+        timestamp = await _fetch_block_timestamp_with_retry(session, node_url, mid)
+        if timestamp is None:
+            logger.warning("Failed to fetch timestamp for height %d after retries", mid)
+            high = mid - 1
+            continue
+
+        block_date = _timestamp_to_date(timestamp)
+
+        if block_date <= target_date:
+            result = mid  # This height is valid, try to find higher
+            low = mid + 1
+        else:
+            high = mid - 1  # This height is too new, go lower
+
+    logger.info(
+        "Binary search complete after %d iterations: height %d has date <= %s",
+        iteration,
+        result,
+        target_date,
+    )
+    return result

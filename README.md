@@ -30,6 +30,8 @@ The indexer will backfill all blocks up to the last date in the price CSV, then 
 
 ## Price Data
 
+**Price data MUST be historical.** The indexer requires price data that predates or matches the blocks being indexed. This ensures every block timestamp has a corresponding price record for accurate cointime economics calculations.
+
 The indexer requires a CSV file with ERG/USD price data. A default `input/erg_prices.csv` is included in this repository; to refresh or extend price coverage, download an updated file from CoinGecko:
 
 1. Go to [CoinGecko Ergo Price History](https://www.coingecko.com/en/coins/ergo/historical_data)
@@ -52,6 +54,31 @@ To update with new price data:
 2. Replace `input/erg_prices.csv`
 3. Optionally copy `output/cointime.csv` to `input/cointime.csv` to bootstrap from the previous run
 4. Run the indexer again
+
+### End Height Determination
+
+The indexer determines the end height dynamically based on price data availability:
+
+1. **Latest price date**: Reads the maximum date from the price CSV (`PRICE_CSV_PATH`)
+2. **Binary search**: Uses binary search against the Ergo node to find the exact block height where `block_date <= max_price_date`
+3. **Target height**: This height becomes the indexing target
+
+This approach ensures:
+- Accurate progress % and ETA calculations throughout the sync
+- No blocks are indexed beyond available price data
+- Clean stop at the price data boundary
+
+Example:
+```
+Price CSV contains data up to: 2024-01-15
+Chain height: 1,200,000
+
+Binary search finds: block 987,654 has date 2024-01-15
+Target height: 987,654
+
+Indexer syncs from START_HEIGHT → 987,654
+Progress shows: "45% complete" (accurate against real target)
+```
 
 ## Folder Structure
 

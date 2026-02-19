@@ -3,7 +3,9 @@
 import csv
 import sys
 from pathlib import Path
+from unittest.mock import patch
 
+import aiohttp
 import pytest
 from aioresponses import aioresponses
 
@@ -92,16 +94,18 @@ class TestFetchChainHeight:
                 "http://test-node:9053/blockchain/indexedHeight",
                 payload={"indexedHeight": 1750000, "fullHeight": 1750000},
             )
-            result = await fetch_chain_height("http://test-node:9053")
-            assert result == 1750000
+            async with aiohttp.ClientSession() as session:
+                result = await fetch_chain_height(session, "http://test-node:9053")
+                assert result == 1750000
 
     @pytest.mark.asyncio
     async def test_fetch_chain_height_failure(self):
         """Returns None on failure."""
         with aioresponses() as m:
             m.get("http://test-node:9053/blockchain/indexedHeight", status=500)
-            result = await fetch_chain_height("http://test-node:9053")
-            assert result is None
+            async with aiohttp.ClientSession() as session:
+                result = await fetch_chain_height(session, "http://test-node:9053")
+                assert result is None
 
 
 class TestMainAsync:
@@ -131,7 +135,8 @@ class TestMainAsync:
                     "http://test-node:9053/blockchain/indexedHeight",
                     payload={"indexedHeight": 100},
                 )
-                await main_async()
+                with patch("src.status.find_height_by_date", return_value=50):
+                    await main_async()
         finally:
             sys.argv = argv
 
@@ -139,6 +144,7 @@ class TestMainAsync:
         assert "Max height: 2" in output
         assert "Total rows: 2" in output
         assert "Date range: 2019-07-01 to 2019-07-02" in output
+        assert "Target height: 50" in output
 
     @pytest.mark.asyncio
     async def test_main_no_data(self, tmp_path, capsys):
@@ -159,9 +165,10 @@ class TestMainAsync:
                     "http://test-node:9053/blockchain/indexedHeight",
                     payload={"indexedHeight": 1000},
                 )
-                with pytest.raises(SystemExit) as exc_info:
-                    await main_async()
-                assert exc_info.value.code == 0
+                with patch("src.status.find_height_by_date", return_value=500):
+                    with pytest.raises(SystemExit) as exc_info:
+                        await main_async()
+                    assert exc_info.value.code == 0
         finally:
             sys.argv = argv
 
