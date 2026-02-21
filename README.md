@@ -135,9 +135,19 @@ The Ergo node (local or external) must be v6.0.1+ with `extraIndex = true` for t
 Data flow:
 1. Wait for Ergo node to sync
 2. Load price data from CSV to determine target date
-3. Backfill from START_HEIGHT (or resume from existing output) until target date
-4. Write cointime data and deduplicated prices to separate CSV files
-5. Exit
+3. Check existing cointime.csv for duplicates and auto-deduplicate if corrupted
+4. Backfill from START_HEIGHT (or resume from existing output) until target date
+5. Write cointime data and deduplicated prices to separate CSV files
+6. Exit
+
+### Crash Recovery
+
+The indexer automatically handles corrupted or partially written cointime.csv files on startup:
+- Detects duplicate heights in existing output
+- Removes duplicates (keeps last occurrence)
+- Rewrites the file before resuming indexing
+
+This allows the indexer to recover gracefully from crashes or interruptions without manual intervention.
 
 ### How it works
 
