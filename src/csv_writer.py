@@ -163,3 +163,45 @@ def get_max_height(csv_path: str) -> Optional[int]:
         return None
 
     return max_height
+
+
+def deduplicate_cointime_csv(csv_path: str) -> int:
+    """Read, deduplicate by height, and rewrite cointime CSV if needed.
+    
+    Returns the number of duplicates removed. Only rewrites file if duplicates exist.
+    """
+    path = Path(csv_path)
+    if not path.exists():
+        return 0
+    
+    rows: List[dict] = []
+    with open(path, newline="", encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            rows.append(row)
+    
+    if not rows:
+        return 0
+    
+    # Check for duplicates by keeping track of seen heights
+    seen: dict[int, dict] = {}
+    for row in rows:
+        try:
+            height = int(row["blockheight"])
+            seen[height] = row
+        except (ValueError, KeyError):
+            continue
+    
+    if len(seen) == len(rows):
+        return 0  # No duplicates
+    
+    # Rewrite with deduplication
+    with open(path, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=COINTIME_FIELDNAMES)
+        writer.writeheader()
+        for height in sorted(seen.keys()):
+            writer.writerow(seen[height])
+    
+    removed = len(rows) - len(seen)
+    logger.info("Deduplicated %d rows from %s", removed, csv_path)
+    return removed

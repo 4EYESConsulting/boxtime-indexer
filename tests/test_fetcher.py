@@ -14,6 +14,7 @@ from src.fetcher import (
     fetch_height,
     fetch_height_with_retry,
     find_height_by_date,
+    find_first_height_by_date,
     _fetch_block_timestamp,
     _fetch_block_timestamp_with_retry,
 )
@@ -462,3 +463,25 @@ async def test_find_height_by_date_boundary():
             result = await find_height_by_date(session, NODE, 1, 100, target)
 
     assert result == 50
+
+
+@pytest.mark.asyncio
+async def test_find_first_height_by_date_historical_data():
+    """Returns first block when data spans multiple days."""
+    from datetime import date
+    from unittest.mock import patch
+
+    target = date(2020, 1, 2)
+    jan1_ts = 1577836800000  # 2020-01-01 00:00:00 UTC
+    jan2_ts = 1577923200000  # 2020-01-02 00:00:00 UTC
+
+    # Heights 1-50 = Jan 1, Heights 51-100 = Jan 2
+    timestamps = {h: jan1_ts if h <= 50 else jan2_ts for h in range(1, 101)}
+
+    async with aiohttp.ClientSession() as session:
+        with patch("src.fetcher._fetch_block_timestamp") as mock_fetch_ts:
+            mock_fetch_ts.side_effect = lambda sess, url, height: timestamps.get(height)
+
+            result = await find_first_height_by_date(session, NODE, 1, 100, target)
+
+    assert result == 51

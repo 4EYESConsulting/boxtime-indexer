@@ -7,8 +7,10 @@ from typing import Dict, List, Optional
 
 import aiohttp
 
+from pathlib import Path
+
 from src.config import Config
-from src.csv_writer import get_max_height, write_cointime_csv, write_prices_csv
+from src.csv_writer import deduplicate_cointime_csv, get_max_height, write_cointime_csv, write_prices_csv
 from src.fetcher import HeightData, fetch_chunk, _get_json, find_first_height_by_date
 
 logger = logging.getLogger(__name__)
@@ -116,6 +118,12 @@ async def run_backfill(
     End height is determined by the latest date in price data.
     """
     chain_height = await _get_chain_height(session, config.node_url)
+
+    # Deduplicate existing cointime data on startup (recovers from crashes)
+    if Path(config.cointime_output_path).exists():
+        removed = deduplicate_cointime_csv(config.cointime_output_path)
+        if removed > 0:
+            logger.info("Recovered from corrupted CSV, removed %d duplicates", removed)
 
     # Get max height from existing output file
     max_existing_height = get_max_height(config.cointime_output_path)
