@@ -1,6 +1,6 @@
 # boxtime-indexer
 
-Cointime Economics ETL/indexer for the [Ergo](https://ergoplatform.org) blockchain. Pre-computes coinblocks created (CBC), coinblocks destroyed (CBD), and coinblocks stored (CBS) for every block height and outputs the results to a CSV file.
+Cointime Economics ETL/indexer for the [Ergo](https://ergoplatform.org) blockchain. Pre-computes coinblocks created (CBC), coinblocks destroyed (CBD), and coinblocks stored (CBS) for every block height and outputs the results to CSV files.
 
 Companion to the [boxtime](https://github.com/4EYESConsulting/boxtime) library.
 
@@ -26,7 +26,7 @@ Run the indexer:
 task up
 ```
 
-The indexer will backfill all blocks up to the last date in the price CSV, then exit. The output is written to `output/cointime.csv`.
+The indexer will backfill all blocks up to the last date in the price CSV, then exit. The output is written to `output/cointime.csv` and `output/prices.csv`.
 
 ## Price Data
 
@@ -46,25 +46,16 @@ The CSV should have columns from CoinGecko's historical export such as:
 
 Additional columns like `market_cap` and `total_volume` are ignored.
 
-### Updating Price Data
-
-To update with new price data:
-
-1. Download a new CSV from CoinGecko with the extended date range
-2. Replace `input/erg_prices.csv`
-3. Optionally copy `output/cointime.csv` to `input/cointime.csv` to bootstrap from the previous run
-4. Run the indexer again
-
 ### End Height Determination
 
 The indexer determines the end height dynamically based on price data availability:
 
 1. **Latest price date**: Reads the maximum date from the price CSV (`PRICE_CSV_PATH`)
-2. **Binary search**: Uses binary search against the Ergo node to find the exact block height where `block_date <= max_price_date`
+2. **Binary search**: Uses binary search against the Ergo node to find the first block height where `block_date == max_price_date`
 3. **Target height**: This height becomes the indexing target
 
 This approach ensures:
-- Accurate progress % and ETA calculations throughout the sync
+- Accurate progress % throughout the sync
 - No blocks are indexed beyond available price data
 - Clean stop at the price data boundary
 
@@ -73,7 +64,7 @@ Example:
 Price CSV contains data up to: 2024-01-15
 Chain height: 1,200,000
 
-Binary search finds: block 987,654 has date 2024-01-15
+Binary search finds: block 987,654 is first block on 2024-01-15
 Target height: 987,654
 
 Indexer syncs from START_HEIGHT → 987,654
@@ -85,10 +76,10 @@ Progress shows: "45% complete" (accurate against real target)
 ```
 .
 ├── input/
-│   ├── erg_prices.csv    # Price data from CoinGecko (required)
-│   └── cointime.csv      # Previous output for bootstrap (optional)
+│   └── erg_prices.csv    # Price data from CoinGecko (required)
 ├── output/
-│   └── cointime.csv      # Final merged output
+│   ├── cointime.csv      # Cointime data (height, timestamp, CBC, CBD, CBS)
+│   └── prices.csv        # Deduplicated daily prices
 ├── src/
 │   └── ...
 └── ...
@@ -101,22 +92,36 @@ All settings are environment variables with sensible defaults. Edit `.env` to cu
 | Variable | Default | Description |
 |---|---|---|
 | `NODE_URL` | `http://node:9053` | Ergo node API URL |
-| `PRICE_CSV_PATH` | `input/erg_prices.csv` | Path to price CSV |
-| `BOOTSTRAP_CSV_PATH` | `input/cointime.csv` | Path to bootstrap CSV (optional) |
-| `CSV_OUTPUT_PATH` | `output/cointime.csv` | Path for output CSV |
+| `PRICE_CSV_PATH` | `input/erg_prices.csv` | Path to input price CSV |
+| `COINTIME_OUTPUT_PATH` | `output/cointime.csv` | Path for cointime output CSV |
+| `PRICES_OUTPUT_PATH` | `output/prices.csv` | Path for prices output CSV |
 | `CHUNK_SIZE` | `5000` | Heights per batch during backfill |
 | `MAX_CONCURRENT` | `50` | Maximum concurrent requests to the node |
-| `START_HEIGHT` | `1` | Requested start height if no bootstrap data (network fetch is clamped to `>= 1`) |
+| `START_HEIGHT` | `1` | Requested start height (must be >= 1) |
 
-## Output CSV Format
+## Output CSV Formats
+
+### cointime.csv
 
 ```csv
-blockheight,blockheight_timestamp,blockheight_date,coinblocks_created,coinblocks_destroyed,coinblocks_stored,price_date,price_close
-1,1561978800000,2019-07-01,0,0,0,2019-07-01,0.50
+blockheight,blockheight_timestamp,coinblocks_created,coinblocks_destroyed,coinblocks_stored
+1,1561978800000,0,0,0
+2,1561978800000,67500000000000000,0,67500000000000000
 ...
 ```
 
 All cointime values are in **nanoERGs** (1 ERG = 1,000,000,000 nanoERG).
+
+### prices.csv
+
+```csv
+price_date,price_timestamp,price_close
+2019-07-01,1561939200000,0.50
+2019-07-02,1562025600000,0.52
+...
+```
+
+Prices are deduplicated (one row per unique date) and sorted chronologically. The `price_timestamp` is UTC midnight for each date.
 
 ## Architecture
 
@@ -129,11 +134,20 @@ The Ergo node (local or external) must be v6.0.1+ with `extraIndex = true` for t
 
 Data flow:
 1. Wait for Ergo node to sync
-2. Load price data from CSV
-3. Load bootstrap data if available (previous output)
-4. Backfill from resume point until block date exceeds max price date
-5. Merge with prices and write output CSV
+2. Load price data from CSV to determine target date
+3. Check existing cointime.csv for duplicates and auto-deduplicate if corrupted
+4. Backfill from START_HEIGHT (or resume from existing output) until target date
+5. Write cointime data and deduplicated prices to separate CSV files
 6. Exit
+
+### Crash Recovery
+
+The indexer automatically handles corrupted or partially written cointime.csv files on startup:
+- Detects duplicate heights in existing output
+- Removes duplicates (keeps last occurrence)
+- Rewrites the file before resuming indexing
+
+This allows the indexer to recover gracefully from crashes or interruptions without manual intervention.
 
 ### How it works
 
@@ -166,7 +180,7 @@ A `Taskfile.yml` provides shortcuts for common operations:
 | `task clean` | Remove all containers, images, and volumes |
 | `task install` | Install Python dependencies with pixi |
 | `task test` | Run the test suite |
-| `task status` | Check indexer sync status (shows chain height, progress %, ETA) |
+| `task status` | Check indexer sync status (shows chain height, progress) |
 
 ## License
 

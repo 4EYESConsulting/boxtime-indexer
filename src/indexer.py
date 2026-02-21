@@ -3,13 +3,15 @@
 import asyncio
 import logging
 from datetime import date as date_type
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 import aiohttp
 
+from pathlib import Path
+
 from src.config import Config
-from src.csv_writer import append_output, get_max_height, merge_with_prices
-from src.fetcher import HeightData, fetch_chunk, _get_json, find_height_by_date
+from src.csv_writer import deduplicate_cointime_csv, get_max_height, write_cointime_csv, write_prices_csv
+from src.fetcher import HeightData, fetch_chunk, _get_json, find_first_height_by_date
 
 logger = logging.getLogger(__name__)
 
@@ -41,15 +43,14 @@ async def _get_chain_height(session: aiohttp.ClientSession, node_url: str) -> in
 async def _fetch_and_write_chunks(
     session: aiohttp.ClientSession,
     node_url: str,
-    csv_output_path: str,
+    cointime_output_path: str,
     start_height: int,
     target_height: int,
     chunk_size: int,
     max_concurrent: int,
     shutdown_event: asyncio.Event,
-    price_map: Dict[date_type, float],
 ) -> List[HeightData]:
-    """Fetch blocks in chunks, merge prices, and write incrementally."""
+    """Fetch blocks in chunks and write incrementally."""
     all_results: List[HeightData] = []
     start_time = asyncio.get_event_loop().time()
 
@@ -72,10 +73,8 @@ async def _fetch_and_write_chunks(
         if not results:
             continue
 
-        merged_chunk = merge_with_prices(results, price_map)
-        
-        append_output(csv_output_path, merged_chunk)
-        all_results.extend(merged_chunk)
+        write_cointime_csv(cointime_output_path, results)
+        all_results.extend(results)
 
         current_height = results[-1].height
         progress_pct = (current_height / target_height) * 100
@@ -109,29 +108,36 @@ async def _fetch_and_write_chunks(
 async def run_backfill(
     session: aiohttp.ClientSession,
     config: Config,
-    bootstrap_data: List[HeightData],
     max_price_date: date_type,
     shutdown_event: asyncio.Event,
     price_map: Dict[date_type, float],
-) -> List[HeightData]:
-    """Run the backfill process and return all data for output.
+) -> None:
+    """Run the backfill process.
 
     Writes data incrementally to CSV as chunks are processed.
     End height is determined by the latest date in price data.
     """
     chain_height = await _get_chain_height(session, config.node_url)
 
-    max_bootstrap_height = get_max_height(bootstrap_data)
-    start = (max_bootstrap_height + 1) if max_bootstrap_height is not None else config.start_height
+    # Deduplicate existing cointime data on startup (recovers from crashes)
+    if Path(config.cointime_output_path).exists():
+        removed = deduplicate_cointime_csv(config.cointime_output_path)
+        if removed > 0:
+            logger.info("Recovered from corrupted CSV, removed %d duplicates", removed)
+
+    # Get max height from existing output file
+    max_existing_height = get_max_height(config.cointime_output_path)
+    start = (max_existing_height + 1) if max_existing_height is not None else config.start_height
     fetch_start = max(start, 1)
 
-    target_height = await find_height_by_date(
+    # Find first height that corresponds to the target date
+    target_height = await find_first_height_by_date(
         session, config.node_url, fetch_start, chain_height, max_price_date
     )
 
     logger.info(
-        "Starting backfill: bootstrap max height=%s, start=%d, fetch_start=%d, target_height=%d (max_price_date=%s)",
-        max_bootstrap_height,
+        "Starting backfill: existing max height=%s, start=%d, fetch_start=%d, target_height=%d (max_price_date=%s)",
+        max_existing_height,
         start,
         fetch_start,
         target_height,
@@ -140,27 +146,26 @@ async def run_backfill(
 
     if fetch_start > target_height:
         logger.info("Already up to date at target height %d", target_height)
-        return bootstrap_data
+        write_prices_csv(config.prices_output_path, price_map)
+        return
 
     new_data = await _fetch_and_write_chunks(
         session=session,
         node_url=config.node_url,
-        csv_output_path=config.csv_output_path,
+        cointime_output_path=config.cointime_output_path,
         start_height=fetch_start,
         target_height=target_height,
         chunk_size=config.chunk_size,
         max_concurrent=config.max_concurrent,
         shutdown_event=shutdown_event,
-        price_map=price_map,
     )
-    
-    all_data = bootstrap_data + new_data
+
+    # Write prices after all cointime data is written
+    write_prices_csv(config.prices_output_path, price_map)
 
     logger.info(
-        "Backfill complete: bootstrap=%d, new=%d, total=%d",
-        len(bootstrap_data),
+        "Backfill complete: indexed %d heights from %d to %d",
         len(new_data),
-        len(all_data),
+        fetch_start,
+        target_height,
     )
-
-    return all_data

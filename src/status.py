@@ -10,11 +10,24 @@ from typing import Optional, Tuple
 
 import aiohttp
 
-from src.fetcher import find_height_by_date
+from src.fetcher import find_first_height_by_date
 
 
-def load_output_csv(csv_path: str) -> list[dict]:
-    """Load output CSV and return list of row dicts."""
+def load_cointime_csv(csv_path: str) -> list[dict]:
+    """Load cointime CSV and return list of row dicts."""
+    path = Path(csv_path)
+    if not path.exists():
+        return []
+    rows = []
+    with open(path, newline="", encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            rows.append(row)
+    return rows
+
+
+def load_prices_csv(csv_path: str) -> list[dict]:
+    """Load prices CSV and return list of row dicts."""
     path = Path(csv_path)
     if not path.exists():
         return []
@@ -27,17 +40,25 @@ def load_output_csv(csv_path: str) -> list[dict]:
 
 
 def get_max_height(rows: list[dict]) -> int | None:
-    """Get max height from rows."""
+    """Get max height from cointime rows."""
     if not rows:
         return None
     return max(int(r["blockheight"]) for r in rows)
 
 
 def get_date_range(rows: list[dict]) -> tuple[str, str]:
-    """Get min and max block dates from rows."""
+    """Get min and max block dates from cointime rows."""
     if not rows:
         return ("N/A", "N/A")
-    dates = [r["blockheight_date"] for r in rows if r.get("blockheight_date")]
+    dates = []
+    for row in rows:
+        try:
+            ts = int(row["blockheight_timestamp"])
+            from datetime import datetime, timezone
+            dt = datetime.fromtimestamp(ts / 1000, tz=timezone.utc).date()
+            dates.append(str(dt))
+        except (ValueError, KeyError):
+            continue
     if not dates:
         return ("N/A", "N/A")
     return (min(dates), max(dates))
@@ -85,24 +106,17 @@ async def fetch_chain_height(session: aiohttp.ClientSession, node_url: str) -> O
         return None
 
 
-def format_eta(seconds: float) -> str:
-    """Format seconds as human-readable ETA."""
-    if seconds < 60:
-        return f"{seconds:.0f} seconds"
-    elif seconds < 3600:
-        return f"{seconds/60:.1f} minutes"
-    elif seconds < 86400:
-        return f"{seconds/3600:.1f} hours"
-    else:
-        return f"{seconds/86400:.1f} days"
-
-
 async def main_async():
     parser = argparse.ArgumentParser(description="Check boxtime-indexer sync status")
     parser.add_argument(
-        "--output-csv",
-        default="output/cointime.csv",
-        help="Path to output CSV (default: output/cointime.csv)",
+        "--cointime-csv",
+        default=os.environ.get("COINTIME_OUTPUT_PATH", "output/cointime.csv"),
+        help="Path to cointime CSV (default: COINTIME_OUTPUT_PATH env var or output/cointime.csv)",
+    )
+    parser.add_argument(
+        "--prices-csv",
+        default=os.environ.get("PRICES_OUTPUT_PATH", "output/prices.csv"),
+        help="Path to prices CSV (default: PRICES_OUTPUT_PATH env var or output/prices.csv)",
     )
     parser.add_argument(
         "--node-url",
@@ -112,14 +126,16 @@ async def main_async():
     parser.add_argument(
         "--price-csv",
         default=os.environ.get("PRICE_CSV_PATH", "input/erg_prices.csv"),
-        help="Path to price CSV (default: PRICE_CSV_PATH env var or input/erg_prices.csv)",
+        help="Path to input price CSV (default: PRICE_CSV_PATH env var or input/erg_prices.csv)",
     )
     args = parser.parse_args()
 
-    output_rows = load_output_csv(args.output_csv)
-    output_max = get_max_height(output_rows)
-    min_date, max_date = get_date_range(output_rows)
-    total_rows = len(output_rows)
+    cointime_rows = load_cointime_csv(args.cointime_csv)
+    prices_rows = load_prices_csv(args.prices_csv)
+    cointime_max = get_max_height(cointime_rows)
+    min_date, max_date = get_date_range(cointime_rows)
+    total_cointime_rows = len(cointime_rows)
+    total_prices_rows = len(prices_rows)
 
     max_price_date, price_status = load_price_csv(args.price_csv)
 
@@ -127,9 +143,9 @@ async def main_async():
         chain_height = await fetch_chain_height(session, args.node_url)
 
         if chain_height and max_price_date:
-            search_start = max((output_max or 0) + 1, 1)
+            search_start = max((cointime_max or 0) + 1, 1)
             if chain_height >= search_start:
-                target_height = await find_height_by_date(
+                target_height = await find_first_height_by_date(
                     session,
                     args.node_url,
                     search_start,
@@ -137,25 +153,29 @@ async def main_async():
                     max_price_date,
                 )
             else:
-                target_height = output_max or 0
+                target_height = cointime_max or 0
         else:
             target_height = None
 
     print(f"Sync Status")
     print(f"=" * 40)
 
-    if not output_rows and not output_max:
-        print("No data found. Run the indexer to start syncing.")
+    if not cointime_rows and not cointime_max:
+        print("No cointime data found. Run the indexer to start syncing.")
         if chain_height:
             print(f"\nChain height: {chain_height:,}")
             if target_height is not None:
                 print(f"Target height: {target_height:,} (from price data)")
         sys.exit(0)
 
-    print(f"Output file: {args.output_csv}")
-    print(f"  - Max height: {output_max or 'N/A'}")
-    print(f"  - Total rows: {total_rows:,}")
+    print(f"Cointime file: {args.cointime_csv}")
+    print(f"  - Max height: {cointime_max or 'N/A'}")
+    print(f"  - Total rows: {total_cointime_rows:,}")
     print(f"  - Date range: {min_date} to {max_date}")
+    print()
+
+    print(f"Prices file: {args.prices_csv}")
+    print(f"  - Total rows: {total_prices_rows:,}")
     print()
 
     if chain_height:
@@ -167,25 +187,10 @@ async def main_async():
         print(f"  - Max price date: {max_price_date}")
         print(f"  - Target height: {target_height:,}")
 
-        if output_max is not None and target_height > output_max:
-            remaining = target_height - output_max
+        if cointime_max is not None and target_height > cointime_max:
+            remaining = target_height - cointime_max
             print(f"  - Remaining: {remaining:,} blocks")
-
-            if output_rows and len(output_rows) > 1:
-                try:
-                    latest_timestamp = int(output_rows[-1]["blockheight_timestamp"])
-                    first_timestamp = int(output_rows[0]["blockheight_timestamp"])
-                    time_diff_seconds = (latest_timestamp - first_timestamp) / 1000
-
-                    if time_diff_seconds > 0:
-                        heights_processed = len(output_rows)
-                        rate = heights_processed / time_diff_seconds
-                        eta_seconds = remaining / rate if rate > 0 else 0
-                        eta_str = format_eta(eta_seconds)
-                        print(f"  - ETA: {eta_str} at current rate ({rate:.1f} blocks/sec)")
-                except (KeyError, ValueError, IndexError):
-                    pass
-        elif output_max is not None and target_height <= output_max:
+        elif cointime_max is not None and target_height <= cointime_max:
             print(f"  - Status: Up to date with price data")
     elif max_price_date:
         print(f"Price data status: {price_status}")
