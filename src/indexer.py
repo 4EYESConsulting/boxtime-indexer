@@ -12,35 +12,6 @@ from src.csv_writer import append_output, get_max_height, merge_with_prices
 from src.fetcher import HeightData, fetch_chunk, _get_json, find_height_by_date
 
 logger = logging.getLogger(__name__)
-_GENESIS_TIMESTAMP = 1561978800000
-
-
-def _make_genesis_row() -> HeightData:
-    """Build a synthetic genesis placeholder row for height 0."""
-    return HeightData(
-        height=0,
-        timestamp=_GENESIS_TIMESTAMP,
-        cbc=0,
-        cbd=0,
-        cbs=0,
-    )
-
-
-def _has_genesis_row(data: List[HeightData]) -> bool:
-    """Check if data contains a height-0 row."""
-    return any(d.height == 0 for d in data)
-
-
-def _write_genesis_if_needed(csv_path: str) -> None:
-    """Write genesis row to CSV if file doesn't exist or is empty."""
-    from pathlib import Path
-    path = Path(csv_path)
-    
-    if not path.exists() or path.stat().st_size == 0:
-        genesis = _make_genesis_row()
-        genesis.block_date = date_type(2019, 7, 1)  # Genesis date
-        append_output(csv_path, [genesis])
-        logger.info("Wrote genesis row (height 0) to %s", csv_path)
 
 
 def _format_eta(seconds: float) -> str:
@@ -101,19 +72,15 @@ async def _fetch_and_write_chunks(
         if not results:
             continue
 
-        # Merge prices before writing
         merged_chunk = merge_with_prices(results, price_map)
         
-        # Write incrementally
         append_output(csv_output_path, merged_chunk)
         all_results.extend(merged_chunk)
 
-        # Calculate progress
         current_height = results[-1].height
         progress_pct = (current_height / target_height) * 100
         remaining = target_height - current_height
         
-        # Calculate rate and ETA
         elapsed = asyncio.get_event_loop().time() - start_time
         if elapsed > 0:
             blocks_processed = len(all_results)
@@ -158,7 +125,6 @@ async def run_backfill(
     start = (max_bootstrap_height + 1) if max_bootstrap_height is not None else config.start_height
     fetch_start = max(start, 1)
 
-    # Find target height based on price data availability
     target_height = await find_height_by_date(
         session, config.node_url, fetch_start, chain_height, max_price_date
     )
@@ -172,14 +138,6 @@ async def run_backfill(
         max_price_date,
     )
 
-    # Write genesis row if starting fresh and height 0 is needed
-    if config.start_height == 0 and not _has_genesis_row(bootstrap_data):
-        _write_genesis_if_needed(config.csv_output_path)
-        genesis = _make_genesis_row()
-        genesis.block_date = date_type(2019, 7, 1)
-        bootstrap_data = [genesis] + bootstrap_data
-
-    # If already up to date, nothing to do
     if fetch_start > target_height:
         logger.info("Already up to date at target height %d", target_height)
         return bootstrap_data

@@ -20,6 +20,10 @@ class Config:
 
 def load_config() -> Config:
     """Load configuration from environment variables with defaults."""
+    start_height = int(os.environ.get("START_HEIGHT", "1"))
+    if start_height < 1:
+        raise ValueError("START_HEIGHT must be >= 1")
+
     return Config(
         node_url=os.environ.get("NODE_URL", "http://node:9053"),
         price_csv_path=os.environ.get("PRICE_CSV_PATH", "input/erg_prices.csv"),
@@ -27,5 +31,5 @@ def load_config() -> Config:
         csv_output_path=os.environ.get("CSV_OUTPUT_PATH", "output/cointime.csv"),
         chunk_size=int(os.environ.get("CHUNK_SIZE", "5000")),
         max_concurrent=int(os.environ.get("MAX_CONCURRENT", "50")),
-        start_height=int(os.environ.get("START_HEIGHT", "1")),
+        start_height=start_height,
     )
