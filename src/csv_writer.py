@@ -185,15 +185,17 @@ def deduplicate_cointime_csv(csv_path: str) -> int:
     
     # Check for duplicates by keeping track of seen heights
     seen: dict[int, dict] = {}
+    valid_rows = 0
     for row in rows:
         try:
             height = int(row["blockheight"])
             seen[height] = row
+            valid_rows += 1
         except (ValueError, KeyError):
             continue
     
-    if len(seen) == len(rows):
-        return 0  # No duplicates
+    if len(seen) == valid_rows:
+        return 0  # No duplicates among valid rows
     
     # Rewrite with deduplication
     with open(path, "w", newline="", encoding="utf-8") as f:
@@ -202,6 +204,6 @@ def deduplicate_cointime_csv(csv_path: str) -> int:
         for height in sorted(seen.keys()):
             writer.writerow(seen[height])
     
-    removed = len(rows) - len(seen)
+    removed = valid_rows - len(seen)
     logger.info("Deduplicated %d rows from %s", removed, csv_path)
     return removed

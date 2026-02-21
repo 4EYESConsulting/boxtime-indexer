@@ -11,6 +11,7 @@ import pytest
 from src.csv_writer import (
     COINTIME_FIELDNAMES,
     PRICES_FIELDNAMES,
+    deduplicate_cointime_csv,
     get_max_height,
     load_prices,
     write_cointime_csv,
@@ -270,3 +271,160 @@ class TestGetMaxHeight:
 
             result = get_max_height(str(output_path))
             assert result == 10
+
+
+class TestDeduplicateCointimeCsv:
+    """Tests for deduplicate_cointime_csv()."""
+
+    def test_deduplicate_file_not_found(self):
+        """Returns 0 when file doesn't exist."""
+        result = deduplicate_cointime_csv("/nonexistent/path.csv")
+        assert result == 0
+
+    def test_deduplicate_empty_file(self):
+        """Returns 0 for empty file."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output_path = Path(tmpdir) / "cointime.csv"
+            # Create empty file with just header
+            with open(output_path, "w", newline="") as f:
+                writer = csv.DictWriter(f, fieldnames=COINTIME_FIELDNAMES)
+                writer.writeheader()
+
+            result = deduplicate_cointime_csv(str(output_path))
+            assert result == 0
+
+    def test_deduplicate_no_duplicates(self):
+        """Returns 0 when no duplicates exist, file unchanged."""
+        data = [
+            HeightData(height=1, timestamp=1000, cbc=100, cbd=10, cbs=90),
+            HeightData(height=2, timestamp=2000, cbc=100, cbd=10, cbs=90),
+            HeightData(height=3, timestamp=3000, cbc=100, cbd=10, cbs=90),
+        ]
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output_path = Path(tmpdir) / "cointime.csv"
+            write_cointime_csv(str(output_path), data)
+
+            result = deduplicate_cointime_csv(str(output_path))
+            assert result == 0
+
+            # Verify file unchanged
+            with open(output_path, newline="") as f:
+                reader = csv.DictReader(f)
+                rows = list(reader)
+            assert len(rows) == 3
+
+    def test_deduplicate_removes_duplicates(self):
+        """Removes duplicates and returns count."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output_path = Path(tmpdir) / "cointime.csv"
+            
+            # Write data with duplicates
+            with open(output_path, "w", newline="") as f:
+                writer = csv.DictWriter(f, fieldnames=COINTIME_FIELDNAMES)
+                writer.writeheader()
+                writer.writerow({
+                    "blockheight": "1",
+                    "blockheight_timestamp": "1000",
+                    "coinblocks_created": "100",
+                    "coinblocks_destroyed": "10",
+                    "coinblocks_stored": "90",
+                })
+                writer.writerow({
+                    "blockheight": "2",
+                    "blockheight_timestamp": "2000",
+                    "coinblocks_created": "200",
+                    "coinblocks_destroyed": "20",
+                    "coinblocks_stored": "180",
+                })
+                writer.writerow({
+                    "blockheight": "1",  # Duplicate of first row
+                    "blockheight_timestamp": "1500",
+                    "coinblocks_created": "150",
+                    "coinblocks_destroyed": "15",
+                    "coinblocks_stored": "135",
+                })
+
+            result = deduplicate_cointime_csv(str(output_path))
+            assert result == 1
+
+            # Verify only 2 unique rows remain
+            with open(output_path, newline="") as f:
+                reader = csv.DictReader(f)
+                rows = list(reader)
+            assert len(rows) == 2
+
+    def test_deduplicate_keeps_last_occurrence(self):
+        """Keeps the last occurrence of each height."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output_path = Path(tmpdir) / "cointime.csv"
+            
+            # Write data with duplicates
+            with open(output_path, "w", newline="") as f:
+                writer = csv.DictWriter(f, fieldnames=COINTIME_FIELDNAMES)
+                writer.writeheader()
+                writer.writerow({
+                    "blockheight": "1",
+                    "blockheight_timestamp": "1000",
+                    "coinblocks_created": "100",
+                    "coinblocks_destroyed": "10",
+                    "coinblocks_stored": "90",
+                })
+                writer.writerow({
+                    "blockheight": "1",  # Duplicate with different timestamp
+                    "blockheight_timestamp": "1500",
+                    "coinblocks_created": "150",
+                    "coinblocks_destroyed": "15",
+                    "coinblocks_stored": "135",
+                })
+
+            deduplicate_cointime_csv(str(output_path))
+
+            # Verify last occurrence was kept
+            with open(output_path, newline="") as f:
+                reader = csv.DictReader(f)
+                rows = list(reader)
+            assert len(rows) == 1
+            assert rows[0]["blockheight_timestamp"] == "1500"
+
+    def test_deduplicate_invalid_rows(self):
+        """Gracefully handles invalid rows."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output_path = Path(tmpdir) / "cointime.csv"
+            
+            # Write data with invalid height
+            with open(output_path, "w", newline="") as f:
+                writer = csv.DictWriter(f, fieldnames=COINTIME_FIELDNAMES)
+                writer.writeheader()
+                writer.writerow({
+                    "blockheight": "1",
+                    "blockheight_timestamp": "1000",
+                    "coinblocks_created": "100",
+                    "coinblocks_destroyed": "10",
+                    "coinblocks_stored": "90",
+                })
+                writer.writerow({
+                    "blockheight": "invalid",  # Invalid height
+                    "blockheight_timestamp": "2000",
+                    "coinblocks_created": "200",
+                    "coinblocks_destroyed": "20",
+                    "coinblocks_stored": "180",
+                })
+                writer.writerow({
+                    "blockheight": "2",
+                    "blockheight_timestamp": "3000",
+                    "coinblocks_created": "300",
+                    "coinblocks_destroyed": "30",
+                    "coinblocks_stored": "270",
+                })
+
+            result = deduplicate_cointime_csv(str(output_path))
+            # Should return 0 since no actual duplicates among valid rows
+            assert result == 0
+
+            # Verify file unchanged (no duplicates = no rewrite)
+            with open(output_path, newline="") as f:
+                reader = csv.DictReader(f)
+                rows = list(reader)
+            # File not rewritten since no duplicates found
+            assert len(rows) == 3  # All rows remain (including invalid)
