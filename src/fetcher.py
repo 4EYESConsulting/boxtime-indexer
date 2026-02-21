@@ -286,3 +286,64 @@ async def find_height_by_date(
         target_date,
     )
     return result
+
+
+async def find_first_height_by_date(
+    session: aiohttp.ClientSession,
+    node_url: str,
+    start_height: int,
+    chain_height: int,
+    target_date: date_type,
+) -> int:
+    """Binary search to find the first height where block_date == target_date.
+
+    Returns the height of the first block with date == target_date.
+    If no blocks have the target date, returns the last height with date < target_date.
+    """
+    logger.info(
+        "Binary search: finding first height for date %s in range %d-%d",
+        target_date,
+        start_height,
+        chain_height,
+    )
+
+    # First, find the range of heights that have the target date
+    low = start_height
+    high = chain_height
+    first_height = None
+
+    iteration = 0
+    while low <= high:
+        iteration += 1
+        mid = (low + high) // 2
+
+        timestamp = await _fetch_block_timestamp_with_retry(session, node_url, mid)
+        if timestamp is None:
+            logger.warning("Failed to fetch timestamp for height %d after retries", mid)
+            high = mid - 1
+            continue
+
+        block_date = _timestamp_to_date(timestamp)
+
+        if block_date == target_date:
+            # Found one block with the target date, but we need the first one
+            first_height = mid
+            high = mid - 1  # Keep searching to the left
+        elif block_date < target_date:
+            # This block is before the target date, look to the right
+            if first_height is None:
+                first_height = mid  # Keep track of the last block before target
+            low = mid + 1
+        else:
+            # This block is after the target date, look to the left
+            high = mid - 1
+
+    result = first_height if first_height is not None else start_height - 1
+    
+    logger.info(
+        "Binary search complete after %d iterations: first height for date %s is %d",
+        iteration,
+        target_date,
+        result,
+    )
+    return result

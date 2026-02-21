@@ -2,14 +2,13 @@
 
 import asyncio
 from datetime import date
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import patch
 
 import aiohttp
 import pytest
 from aioresponses import aioresponses
 
 from src.config import Config
-from src.fetcher import HeightData
 from src.indexer import _get_chain_height, run_backfill
 
 NODE = "http://test-node:9053"
@@ -19,8 +18,8 @@ def _make_config(**overrides) -> Config:
     defaults = dict(
         node_url=NODE,
         price_csv_path="input/erg_prices.csv",
-        bootstrap_csv_path="input/cointime.csv",
-        csv_output_path="output/cointime.csv",
+        cointime_output_path="output/cointime.csv",
+        prices_output_path="output/prices.csv",
         chunk_size=100,
         max_concurrent=5,
         start_height=1,
@@ -65,104 +64,85 @@ async def test_get_chain_height_missing_field():
 
 
 # ---------------------------------------------------------------------------
-# _get_chain_height
+# run_backfill
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_run_backfill_no_bootstrap():
-    """Backfill does not synthesize genesis row when start_height > 0."""
+async def test_run_backfill_no_existing_data():
+    """Backfill from start_height when no existing data."""
     config = _make_config(start_height=1)
     shutdown = asyncio.Event()
     price_map = {date(2025, 1, 1): 1.0}
 
-    mock_results = [
-        HeightData(height=1, timestamp=1561978800000, cbc=100, cbd=10, cbs=90),
-    ]
-    mock_results[0].block_date = date(2025, 1, 1)
-
     with aioresponses() as m:
         m.get(f"{NODE}/blockchain/indexedHeight", payload={"indexedHeight": 10})
         with patch("src.indexer.get_max_height", return_value=None), \
-             patch("src.indexer.find_height_by_date", return_value=10), \
-             patch("src.indexer._fetch_and_write_chunks", return_value=mock_results) as mock_fetch:
+             patch("src.indexer.find_first_height_by_date", return_value=10), \
+             patch("src.indexer._fetch_and_write_chunks") as mock_fetch, \
+             patch("src.indexer.write_prices_csv"):
             async with aiohttp.ClientSession() as session:
-                results = await run_backfill(
+                await run_backfill(
                     session=session,
                     config=config,
-                    bootstrap_data=[],
                     max_price_date=date(2025, 1, 1),
                     shutdown_event=shutdown,
                     price_map=price_map,
                 )
 
     mock_fetch.assert_called_once()
-    assert len(results) == 1
-    assert results[0].height == 1
+    call_kwargs = mock_fetch.call_args[1]
+    assert call_kwargs["start_height"] == 1
 
 
 @pytest.mark.asyncio
-async def test_run_backfill_with_bootstrap():
-    """Backfill resumes from max bootstrap height."""
+async def test_run_backfill_with_existing_data():
+    """Backfill resumes from max existing height."""
     config = _make_config(start_height=1)
     shutdown = asyncio.Event()
     price_map = {date(2025, 1, 1): 1.0}
 
-    bootstrap = [
-        HeightData(height=1, timestamp=1561978800000, cbc=100, cbd=10, cbs=90),
-    ]
-
-    new_data = [
-        HeightData(height=2, timestamp=1562065200000, cbc=100, cbd=10, cbs=90),
-    ]
-    new_data[0].block_date = date(2025, 1, 1)
-
     with aioresponses() as m:
         m.get(f"{NODE}/blockchain/indexedHeight", payload={"indexedHeight": 10})
-        with patch("src.indexer.get_max_height", return_value=1), \
-             patch("src.indexer.find_height_by_date", return_value=10), \
-             patch("src.indexer._fetch_and_write_chunks", return_value=new_data) as mock_fetch:
+        with patch("src.indexer.get_max_height", return_value=5), \
+             patch("src.indexer.find_first_height_by_date", return_value=10), \
+             patch("src.indexer._fetch_and_write_chunks") as mock_fetch, \
+             patch("src.indexer.write_prices_csv"):
             async with aiohttp.ClientSession() as session:
-                results = await run_backfill(
+                await run_backfill(
                     session=session,
                     config=config,
-                    bootstrap_data=bootstrap,
                     max_price_date=date(2025, 1, 1),
                     shutdown_event=shutdown,
                     price_map=price_map,
                 )
 
-    assert mock_fetch.call_args[1]["start_height"] == 2
-    assert len(results) == 2
-    assert results[0].height == 1
-    assert results[1].height == 2
+    mock_fetch.assert_called_once()
+    call_kwargs = mock_fetch.call_args[1]
+    assert call_kwargs["start_height"] == 6
 
 
 @pytest.mark.asyncio
 async def test_run_backfill_already_up_to_date():
-    """Returns bootstrap data when already at chain height."""
+    """Skip backfill when already at target height."""
     config = _make_config(start_height=1)
     shutdown = asyncio.Event()
     price_map = {date(2025, 1, 1): 1.0}
 
-    bootstrap = [
-        HeightData(height=1, timestamp=1561978800000, cbc=100, cbd=10, cbs=90),
-    ]
-
     with aioresponses() as m:
         m.get(f"{NODE}/blockchain/indexedHeight", payload={"indexedHeight": 1})
         with patch("src.indexer.get_max_height", return_value=1), \
-             patch("src.indexer._fetch_and_write_chunks") as mock_fetch:
+             patch("src.indexer.find_first_height_by_date", return_value=1), \
+             patch("src.indexer._fetch_and_write_chunks") as mock_fetch, \
+             patch("src.indexer.write_prices_csv") as mock_prices:
             async with aiohttp.ClientSession() as session:
-                results = await run_backfill(
+                await run_backfill(
                     session=session,
                     config=config,
-                    bootstrap_data=bootstrap,
                     max_price_date=date(2025, 1, 1),
                     shutdown_event=shutdown,
                     price_map=price_map,
                 )
 
     mock_fetch.assert_not_called()
-    assert len(results) == 1
-    assert results[0].height == 1
+    mock_prices.assert_called_once()

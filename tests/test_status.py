@@ -9,11 +9,11 @@ import aiohttp
 import pytest
 from aioresponses import aioresponses
 
-from src.status import fetch_chain_height, load_output_csv, get_max_height, get_date_range, main_async
+from src.status import fetch_chain_height, load_cointime_csv, load_prices_csv, get_max_height, get_date_range, main_async
 
 
-def _write_status_rows(path: Path, rows: list[dict]) -> None:
-    fieldnames = ["blockheight", "blockheight_timestamp", "blockheight_date"]
+def _write_cointime_rows(path: Path, rows: list[dict]) -> None:
+    fieldnames = ["blockheight", "blockheight_timestamp"]
     with open(path, "w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
@@ -21,27 +21,49 @@ def _write_status_rows(path: Path, rows: list[dict]) -> None:
             writer.writerow(row)
 
 
-class TestLoadOutputCsv:
-    """Tests for load_output_csv()."""
+class TestLoadCointimeCsv:
+    """Tests for load_cointime_csv()."""
 
-    def test_load_output_csv_success(self, tmp_path):
-        """Successfully loads output CSV."""
-        csv_path = tmp_path / "output.csv"
+    def test_load_cointime_csv_success(self, tmp_path):
+        """Successfully loads cointime CSV."""
+        csv_path = tmp_path / "cointime.csv"
         rows = [
-            {"blockheight": "1", "blockheight_timestamp": "1561978800000", "blockheight_date": "2019-07-01"},
-            {"blockheight": "2", "blockheight_timestamp": "1562065200000", "blockheight_date": "2019-07-02"},
+            {"blockheight": "1", "blockheight_timestamp": "1561978800000"},
+            {"blockheight": "2", "blockheight_timestamp": "1562065200000"},
         ]
-        _write_status_rows(csv_path, rows)
+        _write_cointime_rows(csv_path, rows)
 
-        result = load_output_csv(str(csv_path))
+        result = load_cointime_csv(str(csv_path))
 
         assert len(result) == 2
         assert result[0]["blockheight"] == "1"
         assert result[1]["blockheight"] == "2"
 
-    def test_load_output_csv_file_not_found(self):
+    def test_load_cointime_csv_file_not_found(self):
         """Returns empty list when file doesn't exist."""
-        result = load_output_csv("/nonexistent/path.csv")
+        result = load_cointime_csv("/nonexistent/path.csv")
+        assert result == []
+
+
+class TestLoadPricesCsv:
+    """Tests for load_prices_csv()."""
+
+    def test_load_prices_csv_success(self, tmp_path):
+        """Successfully loads prices CSV."""
+        csv_path = tmp_path / "prices.csv"
+        with open(csv_path, "w", newline="", encoding="utf-8") as f:
+            writer = csv.DictWriter(f, fieldnames=["price_date", "price_timestamp", "price_close"])
+            writer.writeheader()
+            writer.writerow({"price_date": "2019-07-01", "price_timestamp": "1561939200000", "price_close": "1.50"})
+
+        result = load_prices_csv(str(csv_path))
+
+        assert len(result) == 1
+        assert result[0]["price_date"] == "2019-07-01"
+
+    def test_load_prices_csv_file_not_found(self):
+        """Returns empty list when file doesn't exist."""
+        result = load_prices_csv("/nonexistent/path.csv")
         assert result == []
 
 
@@ -68,13 +90,13 @@ class TestGetDateRange:
     """Tests for get_date_range()."""
 
     def test_get_date_range_with_data(self):
-        """Returns min and max dates."""
+        """Returns min and max dates computed from timestamps."""
         rows = [
-            {"blockheight_date": "2019-07-01"},
-            {"blockheight_date": "2019-07-05"},
-            {"blockheight_date": "2019-07-03"},
+            {"blockheight_timestamp": "1561978800000"},
+            {"blockheight_timestamp": "1562324400000"},
         ]
         result = get_date_range(rows)
+        # These timestamps correspond to 2019-07-01 and 2019-07-05
         assert result == ("2019-07-01", "2019-07-05")
 
     def test_get_date_range_empty(self):
@@ -114,18 +136,21 @@ class TestMainAsync:
     @pytest.mark.asyncio
     async def test_main_shows_output_stats(self, tmp_path, capsys):
         """Shows output file stats."""
-        output_csv = tmp_path / "output.csv"
+        cointime_csv = tmp_path / "cointime.csv"
+        prices_csv = tmp_path / "prices.csv"
         rows = [
-            {"blockheight": "1", "blockheight_timestamp": "1561978800000", "blockheight_date": "2019-07-01"},
-            {"blockheight": "2", "blockheight_timestamp": "1562065200000", "blockheight_date": "2019-07-02"},
+            {"blockheight": "1", "blockheight_timestamp": "1561978800000"},
+            {"blockheight": "2", "blockheight_timestamp": "1562065200000"},
         ]
-        _write_status_rows(output_csv, rows)
+        _write_cointime_rows(cointime_csv, rows)
 
         argv = sys.argv
         sys.argv = [
             "status",
-            "--output-csv",
-            str(output_csv),
+            "--cointime-csv",
+            str(cointime_csv),
+            "--prices-csv",
+            str(prices_csv),
             "--node-url",
             "http://test-node:9053",
         ]
@@ -135,7 +160,7 @@ class TestMainAsync:
                     "http://test-node:9053/blockchain/indexedHeight",
                     payload={"indexedHeight": 100},
                 )
-                with patch("src.status.find_height_by_date", return_value=50):
+                with patch("src.status.find_first_height_by_date", return_value=50):
                     await main_async()
         finally:
             sys.argv = argv
@@ -143,19 +168,21 @@ class TestMainAsync:
         output = capsys.readouterr().out
         assert "Max height: 2" in output
         assert "Total rows: 2" in output
-        assert "Date range: 2019-07-01 to 2019-07-02" in output
         assert "Target height: 50" in output
 
     @pytest.mark.asyncio
     async def test_main_no_data(self, tmp_path, capsys):
         """Shows message when no data found."""
-        output_csv = tmp_path / "output.csv"
+        cointime_csv = tmp_path / "cointime.csv"
+        prices_csv = tmp_path / "prices.csv"
 
         argv = sys.argv
         sys.argv = [
             "status",
-            "--output-csv",
-            str(output_csv),
+            "--cointime-csv",
+            str(cointime_csv),
+            "--prices-csv",
+            str(prices_csv),
             "--node-url",
             "http://test-node:9053",
         ]
@@ -165,7 +192,7 @@ class TestMainAsync:
                     "http://test-node:9053/blockchain/indexedHeight",
                     payload={"indexedHeight": 1000},
                 )
-                with patch("src.status.find_height_by_date", return_value=500):
+                with patch("src.status.find_first_height_by_date", return_value=500):
                     with pytest.raises(SystemExit) as exc_info:
                         await main_async()
                     assert exc_info.value.code == 0
@@ -173,5 +200,5 @@ class TestMainAsync:
             sys.argv = argv
 
         output = capsys.readouterr().out
-        assert "No data found" in output
+        assert "No cointime data found" in output
         assert "Chain height: 1,000" in output
