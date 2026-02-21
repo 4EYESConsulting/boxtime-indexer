@@ -73,3 +73,29 @@ def test_config_is_frozen():
         assert False, "Should have raised FrozenInstanceError"
     except AttributeError:
         pass
+
+
+def test_load_config_start_height_must_be_positive():
+    """START_HEIGHT < 1 raises ValueError."""
+    env = {
+        "START_HEIGHT": "0",
+    }
+    with patch.dict(os.environ, env, clear=True):
+        try:
+            load_config()
+            assert False, "Should have raised ValueError"
+        except ValueError as e:
+            assert "START_HEIGHT must be >= 1" in str(e)
+
+
+def test_load_config_start_height_negative_raises():
+    """START_HEIGHT < 0 raises ValueError."""
+    env = {
+        "START_HEIGHT": "-1",
+    }
+    with patch.dict(os.environ, env, clear=True):
+        try:
+            load_config()
+            assert False, "Should have raised ValueError"
+        except ValueError as e:
+            assert "START_HEIGHT must be >= 1" in str(e)
